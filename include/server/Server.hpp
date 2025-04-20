@@ -13,4 +13,5 @@ private:
     restinio::request_handling_status_t handler(restinio::request_handle_t req);
     restinio::request_handling_status_t handleViewBooks(const restinio::request_handle_t& req);
     restinio::request_handling_status_t handleAddUser(const restinio::request_handle_t& req);
+    restinio::request_handling_status_t handleExternalTopUp(const restinio::request_handle_t& req);
 };

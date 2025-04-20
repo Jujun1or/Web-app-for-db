@@ -7,6 +7,7 @@ public:
     Database(const std::string& conn_str);
     nlohmann::json getAllBooks();
     nlohmann::json addNewReader(const std::string& name, const std::string& date);
+    nlohmann::json externalTopUpFund(int summ, const std::string& date);
 private:
     pqxx::connection conn_;
 };
