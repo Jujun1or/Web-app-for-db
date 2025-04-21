@@ -94,3 +94,167 @@ async function topUpFund() {
         console.error('Ошибка:', error);
     }
 }
+
+
+async function returnBook() {
+    const userId = document.getElementById('returnUserId').value;
+    const bookId = document.getElementById('returnBookId').value;
+    const date = document.getElementById('returnDate').value;
+
+    if(!userId || !bookId || !date) {
+        alert('Заполните все поля');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/return-book', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: parseInt(userId),
+                book_id: parseInt(bookId),
+                date: date
+            })
+        });
+        
+        const result = await response.json();
+        document.getElementById('returnStatus').innerHTML = 
+            `Статус: ${result.status}<br>Сообщение: ${result.message}`;
+        
+        if(result.status === 'success') {
+            document.getElementById('returnUserId').value = '';
+            document.getElementById('returnBookId').value = '';
+        }
+    } catch(error) {
+        console.error('Ошибка:', error);
+    }
+}
+
+// Утеря книги
+async function reportLostBook() {
+    const userId = document.getElementById('lostUserId').value;
+    const bookId = document.getElementById('lostBookId').value;
+    const date = document.getElementById('lostDate').value;
+
+    if(!userId || !bookId || !date) {
+        alert('Заполните все поля');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/lost-book', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: parseInt(userId),
+                book_id: parseInt(bookId),
+                date: date
+            })
+        });
+        
+        const result = await response.json();
+        document.getElementById('lostStatus').innerHTML = 
+            `Статус: ${result.status}<br>Сообщение: ${result.message}`;
+        
+        if(result.status === 'success') {
+            document.getElementById('lostUserId').value = '';
+            document.getElementById('lostBookId').value = '';
+        }
+    } catch(error) {
+        console.error('Ошибка:', error);
+    }
+}
+
+async function issueBook() {
+    const userId = document.getElementById('issueUserId').value;
+    const bookId = document.getElementById('issueBookId').value;
+    const date = document.getElementById('issueDate').value;
+
+    if(!validateInputs(userId, bookId, date)) return;
+
+    try {
+        const response = await fetch('http://localhost:8080/issue-book', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: Number(userId),
+                book_id: Number(bookId),
+                date: date
+            })
+        });
+        
+        handleResponse(response, 'issueStatus');
+    } catch(error) {
+        showError('issueStatus', error);
+    }
+}
+
+// Продление книги 
+async function extendBook() {
+    const userId = document.getElementById('extendUserId').value;
+    const bookId = document.getElementById('extendBookId').value;
+    const extensionDays = document.getElementById('extensionDays').value;
+
+    if(!userId || !bookId || !extensionDays) {
+        alert('Заполните все обязательные поля');
+        return;
+    }
+
+    if(extensionDays <= 0) {
+        alert('Количество дней продления должно быть положительным числом');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/extend-book', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: Number(userId),
+                book_id: Number(bookId),
+                extensionTime: Number(extensionDays)
+            })
+        });
+        
+        handleResponse(response, 'extendStatus');
+    } catch(error) {
+        showError('extendStatus', error);
+    }
+}
+
+// Общие функции
+function validateInputs(userId, bookId, date) {
+    if(!userId || !bookId || !date) {
+        alert('Заполните все обязательные поля');
+        return false;
+    }
+    return true;
+}
+
+async function handleResponse(response, elementId) {
+    const result = await response.json();
+    const statusDiv = document.getElementById(elementId);
+    statusDiv.innerHTML = `Статус: ${result.status}<br>${result.message}`;
+    statusDiv.setAttribute('data-status', result.status);
+    
+    if(result.status === 'success') {
+        clearInputs(elementId);
+    }
+}
+
+function clearInputs(elementId) {
+    const prefix = elementId.replace('Status', '');
+    document.getElementById(`${prefix}UserId`).value = '';
+    document.getElementById(`${prefix}BookId`).value = '';
+    document.getElementById(`${prefix}Date`).value = '';
+}
+
+function showError(elementId, error) {
+    const statusDiv = document.getElementById(elementId);
+    statusDiv.innerHTML = `Ошибка: ${error.message}`;
+    statusDiv.setAttribute('data-status', 'error');
+}
