@@ -95,7 +95,7 @@ restinio::request_handling_status_t Server::handleIssueBook(const restinio::requ
     try {
         auto body = nlohmann::json::parse(req->body());
         auto result = db_.bookIssue(
-            body["user_id"].get<int>(),
+            body["user_name"].get<std::string>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );
@@ -106,49 +106,29 @@ restinio::request_handling_status_t Server::handleIssueBook(const restinio::requ
             .done();
     }
     catch(...) {
-        return req->create_response(restinio::status_bad_request()).done();
+        return req->create_response(restinio::status_bad_request())
+            .append_header("Access-Control-Allow-Origin", "*")
+            .done();
     }
 }
 
 restinio::request_handling_status_t Server::handleExtendBook(const restinio::request_handle_t& req) {
     try {
         auto body = nlohmann::json::parse(req->body());
-        
-        // Проверка обязательных полей
-        if (!body.contains("user_id") || !body.contains("book_id") || !body.contains("extensionTime")) {
-            return req->create_response(restinio::status_bad_request())
-                .set_body(R"({"status": "error", "message": "Missing required fields"})")
-                .done();
-        }
-
         auto result = db_.bookExtension(
-            body["user_id"].get<int>(),
+            body["user_name"].get<std::string>(),
             body["book_id"].get<int>(),
             body["extensionTime"].get<int>()
         );
         
         return req->create_response()
             .append_header("Access-Control-Allow-Origin", "*")
-            .append_header(restinio::http_field::content_type, "application/json")
             .set_body(result.dump())
             .done();
     }
-    catch(const nlohmann::json::exception& e) {
+    catch(...) {
         return req->create_response(restinio::status_bad_request())
             .append_header("Access-Control-Allow-Origin", "*")
-            .set_body(nlohmann::json{
-                {"status", "error"},
-                {"message", std::string("JSON parsing error: ") + e.what()}
-            }.dump())
-            .done();
-    }
-    catch(const std::exception& e) {
-        return req->create_response(restinio::status_internal_server_error())
-            .append_header("Access-Control-Allow-Origin", "*")
-            .set_body(nlohmann::json{
-                {"status", "error"},
-                {"message", std::string("Internal error: ") + e.what()}
-            }.dump())
             .done();
     }
 }
@@ -157,7 +137,7 @@ restinio::request_handling_status_t Server::handleReturnBook(const restinio::req
     try {
         auto body = nlohmann::json::parse(req->body());
         auto result = db_.bookReturn(
-            body["user_id"].get<int>(),
+            body["user_name"].get<std::string>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );
@@ -178,7 +158,7 @@ restinio::request_handling_status_t Server::handleLostBook(const restinio::reque
     try {
         auto body = nlohmann::json::parse(req->body());
         auto result = db_.bookLost(
-            body["user_id"].get<int>(),
+            body["user_name"].get<std::string>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );

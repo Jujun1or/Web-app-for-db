@@ -33,17 +33,16 @@
         <!-- Выдача книги -->
         <div class="section">
             <h2>Выдача книги</h2>
-            <input type="number" id="issueUserId" placeholder="ID пользователя">
+            <input type="text" id="issueUserName" placeholder="Имя пользователя">
             <input type="number" id="issueBookId" placeholder="ID книги">
             <input type="date" id="issueDate">
             <button onclick="issueBook()">Выдать книгу</button>
             <div id="issueStatus"></div>
         </div>
-    
-        <!-- Продление книги -->
+        
         <div class="section">
             <h2>Продление книги</h2>
-            <input type="number" id="extendUserId" placeholder="ID пользователя">
+            <input type="text" id="extendUserName" placeholder="Имя пользователя">
             <input type="number" id="extendBookId" placeholder="ID книги">
             <input type="number" id="extensionDays" placeholder="Дней продления" min="1">
             <button onclick="extendBook()">Продлить книгу</button>
@@ -53,7 +52,7 @@
         <!-- Возврат книги -->
         <div class="section">
             <h2>Возврат книги</h2>
-            <input type="number" id="returnUserId" placeholder="ID пользователя">
+            <input type="text" id="returnUserName" placeholder="Имя пользователя">
             <input type="number" id="returnBookId" placeholder="ID книги">
             <input type="date" id="returnDate">
             <button onclick="returnBook()">Вернуть книгу</button>
@@ -63,7 +62,7 @@
         <!-- Утеря книги -->
         <div class="section">
             <h2>Утеря книги</h2>
-            <input type="number" id="lostUserId" placeholder="ID пользователя">
+            <input type="text" id="lostUserName" placeholder="Имя пользователя">
             <input type="number" id="lostBookId" placeholder="ID книги">
             <input type="date" id="lostDate">
             <button onclick="reportLostBook()">Сообщить об утере</button>

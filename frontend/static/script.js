@@ -96,92 +96,22 @@ async function topUpFund() {
 }
 
 
-async function returnBook() {
-    const userId = document.getElementById('returnUserId').value;
-    const bookId = document.getElementById('returnBookId').value;
-    const date = document.getElementById('returnDate').value;
-
-    if(!userId || !bookId || !date) {
-        alert('Заполните все поля');
-        return;
-    }
-
-    try {
-        const response = await fetch('http://localhost:8080/return-book', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                user_id: parseInt(userId),
-                book_id: parseInt(bookId),
-                date: date
-            })
-        });
-        
-        const result = await response.json();
-        document.getElementById('returnStatus').innerHTML = 
-            `Статус: ${result.status}<br>Сообщение: ${result.message}`;
-        
-        if(result.status === 'success') {
-            document.getElementById('returnUserId').value = '';
-            document.getElementById('returnBookId').value = '';
-        }
-    } catch(error) {
-        console.error('Ошибка:', error);
-    }
-}
-
-// Утеря книги
-async function reportLostBook() {
-    const userId = document.getElementById('lostUserId').value;
-    const bookId = document.getElementById('lostBookId').value;
-    const date = document.getElementById('lostDate').value;
-
-    if(!userId || !bookId || !date) {
-        alert('Заполните все поля');
-        return;
-    }
-
-    try {
-        const response = await fetch('http://localhost:8080/lost-book', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                user_id: parseInt(userId),
-                book_id: parseInt(bookId),
-                date: date
-            })
-        });
-        
-        const result = await response.json();
-        document.getElementById('lostStatus').innerHTML = 
-            `Статус: ${result.status}<br>Сообщение: ${result.message}`;
-        
-        if(result.status === 'success') {
-            document.getElementById('lostUserId').value = '';
-            document.getElementById('lostBookId').value = '';
-        }
-    } catch(error) {
-        console.error('Ошибка:', error);
-    }
-}
-
 async function issueBook() {
-    const userId = document.getElementById('issueUserId').value;
+    const userName = document.getElementById('issueUserName').value;
     const bookId = document.getElementById('issueBookId').value;
     const date = document.getElementById('issueDate').value;
 
-    if(!validateInputs(userId, bookId, date)) return;
+    if(!userName || !bookId || !date) {
+        alert('Заполните все поля');
+        return;
+    }
 
     try {
         const response = await fetch('http://localhost:8080/issue-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_id: Number(userId),
+                user_name: userName,
                 book_id: Number(bookId),
                 date: date
             })
@@ -193,13 +123,12 @@ async function issueBook() {
     }
 }
 
-// Продление книги 
 async function extendBook() {
-    const userId = document.getElementById('extendUserId').value;
+    const userName = document.getElementById('extendUserName').value;
     const bookId = document.getElementById('extendBookId').value;
     const extensionDays = document.getElementById('extensionDays').value;
 
-    if(!userId || !bookId || !extensionDays) {
+    if(!userName || !bookId || !extensionDays) {
         alert('Заполните все обязательные поля');
         return;
     }
@@ -214,7 +143,7 @@ async function extendBook() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_id: Number(userId),
+                user_name: userName,
                 book_id: Number(bookId),
                 extensionTime: Number(extensionDays)
             })
@@ -223,6 +152,60 @@ async function extendBook() {
         handleResponse(response, 'extendStatus');
     } catch(error) {
         showError('extendStatus', error);
+    }
+}
+
+async function returnBook() {
+    const userName = document.getElementById('returnUserName').value;
+    const bookId = document.getElementById('returnBookId').value;
+    const date = document.getElementById('returnDate').value;
+
+    if(!userName || !bookId || !date) {
+        alert('Заполните все поля');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/return-book', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_name: userName,
+                book_id: Number(bookId),
+                date: date
+            })
+        });
+        
+        handleResponse(response, 'returnStatus');
+    } catch(error) {
+        showError('returnStatus', error);
+    }
+}
+
+async function reportLostBook() {
+    const userName = document.getElementById('lostUserName').value;
+    const bookId = document.getElementById('lostBookId').value;
+    const date = document.getElementById('lostDate').value;
+
+    if(!userName || !bookId || !date) {
+        alert('Заполните все поля');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/lost-book', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_name: userName,
+                book_id: Number(bookId),
+                date: date
+            })
+        });
+        
+        handleResponse(response, 'lostStatus');
+    } catch(error) {
+        showError('lostStatus', error);
     }
 }
 
