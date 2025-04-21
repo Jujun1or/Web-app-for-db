@@ -258,3 +258,54 @@ function showError(elementId, error) {
     statusDiv.innerHTML = `Ошибка: ${error.message}`;
     statusDiv.setAttribute('data-status', 'error');
 }
+
+async function performSearch() {
+    const query = document.getElementById('searchQuery').value;
+    const searchType = document.querySelector('input[name="searchType"]:checked').value;
+    
+    if (!query) {
+        alert('Введите поисковый запрос');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8080/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: query,
+                search_type: searchType
+            })
+        });
+        
+        const results = await response.json();
+        updateResultsTable(results);
+    } catch(error) {
+        console.error('Ошибка поиска:', error);
+    }
+}
+
+function updateResultsTable(results) {
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+    
+    results.forEach(book => {
+        const row = document.createElement('tr');
+        
+        const idCell = document.createElement('td');
+        idCell.textContent = book.id;
+        row.appendChild(idCell);
+        
+        const titleCell = document.createElement('td');
+        titleCell.textContent = book.title;
+        row.appendChild(titleCell);
+        
+        const authorsCell = document.createElement('td');
+        authorsCell.textContent = book.authors.join(', ');
+        row.appendChild(authorsCell);
+        
+        tbody.appendChild(row);
+    });
+}

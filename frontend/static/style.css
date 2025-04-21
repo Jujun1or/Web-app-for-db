@@ -36,3 +36,27 @@ input {
     padding: 10px;
     border: 1px solid #eee;
 }
+
+#searchResults table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+#searchResults th, #searchResults td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+#searchResults th {
+    background-color: #f2f2f2;
+}
+
+.search-controls {
+    margin: 10px 0;
+}
+
+.search-controls label {
+    margin-right: 15px;
+}

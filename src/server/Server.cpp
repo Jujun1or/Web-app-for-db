@@ -195,6 +195,28 @@ restinio::request_handling_status_t Server::handleLostBook(const restinio::reque
     }
 }
 
+restinio::request_handling_status_t Server::handleSearch(const restinio::request_handle_t& req) {
+    try {
+        const auto body = nlohmann::json::parse(req->body());
+        
+        bool search_by_author = body.value("search_type", "title") == "author";
+        std::string query = body["query"].get<std::string>();
+        
+        auto results = db_.searchBooks(query, search_by_author);
+        
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .append_header("Access-Control-Allow-Origin", "*")
+            .set_body(results.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
 restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
     const auto target = req->header().request_target();
     
@@ -231,6 +253,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         }
         else if(target == "/lost-book") {
             return handleLostBook(req);
+        }
+        else if(target == "/search") {
+            return handleSearch(req);
         }
     }
     

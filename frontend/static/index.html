@@ -71,6 +71,33 @@
         </div>
     </div>
 
+    <div class="section">
+        <h2>Поиск книг</h2>
+        <div class="search-controls">
+            <label>
+                <input type="radio" name="searchType" value="title" checked> По названию
+            </label>
+            <label>
+                <input type="radio" name="searchType" value="author"> По автору
+            </label>
+        </div>
+        <input type="text" id="searchQuery" placeholder="Введите запрос...">
+        <button onclick="performSearch()">Искать</button>
+        
+        <div id="searchResults">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Авторы</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
     <script src="/script.js"></script>
 </body>
 </html>

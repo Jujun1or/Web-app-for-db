@@ -12,6 +12,7 @@ public:
     nlohmann::json bookExtension(int user_id, int book_id, int extensionTime);
     nlohmann::json bookLost(int user_id, int book_id, const std::string& date);
     nlohmann::json bookReturn(int user_id, int book_id, const std::string& date);
+    nlohmann::json searchBooks(const std::string& query, bool search_by_author);
 private:
     pqxx::connection conn_;
 };
