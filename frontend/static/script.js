@@ -292,3 +292,72 @@ function updateResultsTable(results) {
         tbody.appendChild(row);
     });
 }
+
+async function loadOverdue() {
+    try {
+        const response = await fetch('/overdue');
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.message || 'Ошибка сервера');
+        }
+        
+        const tbody = document.getElementById('overdueBody');
+        tbody.innerHTML = '';
+        
+        if (result.data && Array.isArray(result.data)) {
+            result.data.forEach(loan => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${loan.user_name}</td>
+                    <td>${loan.book_title}</td>
+                    <td>${loan.days_overdue}</td>
+                    <td>
+                        <button onclick="generateLetter(${loan.bu_id})">
+                            Сгенерировать письмо
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        } else {
+            throw new Error('Некорректный формат данных');
+        }
+    } catch(error) {
+        console.error('Ошибка:', error.message);
+        alert('Не удалось загрузить данные: ' + error.message);
+    }
+}
+
+async function generateLetter(bu_id) {
+    try {
+        const response = await fetch('/generate-letter', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ bu_id: bu_id })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.message || 'Ошибка сервера');
+        }
+        
+        // Показываем письмо в модальном окне
+        const modal = document.getElementById('letterModal');
+        const content = document.getElementById('letterContent');
+        
+        content.innerHTML = `
+            <p>${result.letter_text.replace(/\n/g, '<br>')}</p>
+        `;
+        
+        modal.style.display = 'block';
+    } catch(error) {
+        console.error('Ошибка:', error);
+        alert('Не удалось сгенерировать письмо: ' + error.message);
+    }
+}
+
+function closeModal() {
+    document.getElementById('letterModal').style.display = 'none';
+}

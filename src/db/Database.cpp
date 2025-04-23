@@ -9,7 +9,6 @@
 #include <sstream>
 #include <stdexcept>
 
-// Парсинг даты из строки формата "YYYY-MM-DD"
 std::chrono::year_month_day parseDate(const std::string& dateStr) {
     std::istringstream iss(dateStr);
     int year, month, day;
@@ -32,6 +31,15 @@ std::chrono::year_month_day parseDate(const std::string& dateStr) {
     }
     
     return ymd;
+}
+
+std::string getCurrentDate() {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d");
+    return ss.str();
 }
 
 // Расчет дней между двумя датами
@@ -93,7 +101,7 @@ nlohmann::json Database::getAllBooks() {
     pqxx::work txn(conn_);
     
     try {
-        pqxx::result res = txn.exec("SELECT book_id, title, price FROM Books");
+        pqxx::result res = txn.exec("SELECT book_id, title, price FROM Books WHERE book_id != 99999");
         for (const auto& row : res) {
             nlohmann::json book;
             book["id"] = row[0].as<int>();
@@ -517,4 +525,74 @@ nlohmann::json Database::searchBooks(const std::string& query, bool search_by_au
     }
     
     return result;
+}
+
+nlohmann::json Database::getOverdueLoans() {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        std::string sql = 
+            "SELECT u.name, b.title, bu.bu_id, bu.issue_date, bu.duration, "
+            "(CURRENT_DATE - (bu.issue_date + bu.duration)) AS days_overdue "
+            "FROM BookUser bu "
+            "JOIN Users u ON bu.user_id = u.user_id "
+            "JOIN Books b ON bu.book_id = b.book_id "
+            "WHERE bu.return_date IS NULL "
+            "AND (CURRENT_DATE - (bu.issue_date + bu.duration)) > 30";
+        
+        pqxx::result res = txn.exec(sql);
+        
+        for (const auto& row : res) {
+            nlohmann::json record;
+            record["bu_id"] = row["bu_id"].as<int>();
+            record["user_name"] = row["name"].as<std::string>();
+            record["book_title"] = row["title"].as<std::string>();
+            record["days_overdue"] = row["days_overdue"].as<int>();
+            result.push_back(record);
+        }
+        txn.commit();
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Ошибка получения просрочек: " + std::string(e.what()));
+    }
+    return result;
+}
+
+nlohmann::json Database::generateComplaintLetter(int bu_id) {
+    pqxx::work txn(conn_);
+    nlohmann::json letter;
+    
+    try {
+        pqxx::row row = txn.exec_params1(
+            "SELECT u.name, b.title, "
+            "(CURRENT_DATE - (bu.issue_date + bu.duration)) AS days_overdue "
+            "FROM BookUser bu "
+            "JOIN Users u ON bu.user_id = u.user_id "
+            "JOIN Books b ON bu.book_id = b.book_id "
+            "WHERE bu.bu_id = $1", 
+            bu_id);
+
+        std::string userName = row["name"].as<std::string>();
+        std::string bookTitle = row["title"].as<std::string>();
+        int daysOverdue = row["days_overdue"].as<int>();
+
+        letter["user_name"] = userName;
+        letter["book_title"] = bookTitle;
+        letter["days_overdue"] = daysOverdue;
+        letter["letter_text"] = 
+            "Уважаемый(ая) " + userName + ",\n\n" +
+            "Напоминаем, что книга \"" + bookTitle + "\" была должна быть возвращена " + 
+            std::to_string(daysOverdue) + " дней назад.\n\n" +
+            "Просим немедленно вернуть издание в библиотеку, в противном случае будут применены штрафные санкции.\n\n" +
+            "С уважением,\nАдминистрация библиотеки";
+        
+        txn.commit();
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Ошибка генерации письма: " + std::string(e.what()));
+    }
+    return letter;
 }

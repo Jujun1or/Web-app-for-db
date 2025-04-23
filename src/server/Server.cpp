@@ -200,7 +200,6 @@ restinio::request_handling_status_t Server::handleSearch(const restinio::request
 restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
     const auto target = req->header().request_target();
     
-    // Обработка статических файлов
     if(req->header().method() == restinio::http_method_get()) {
         if(target == "/") {
             return send_file(req, "frontend/static/index.html");
@@ -213,6 +212,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         }
         else if(target == "/books") {
             return handleViewBooks(req);
+        }
+        else if(target == "/overdue") {
+            return handleGetOverdue(req);
         }
     }
     else if(req->header().method() == restinio::http_method_post()) {
@@ -237,6 +239,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         else if(target == "/search") {
             return handleSearch(req);
         }
+        else if(target == "/generate-letter") {
+            return handleGenerateLetter(req);
+        }
     }
     
     return req->create_response(restinio::status_not_found())
@@ -258,4 +263,46 @@ void Server::start() {
             .request_handler([this](auto req) {
                 return this->handler(std::move(req));
             }));
+}
+
+restinio::request_handling_status_t Server::handleGetOverdue(const restinio::request_handle_t& req) {
+    try {
+        nlohmann::json response;
+        response["data"] = db_.getOverdueLoans();
+        
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .append_header("Access-Control-Allow-Origin", "*")
+            .set_body(response.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        nlohmann::json error;
+        error["status"] = "error";
+        error["message"] = e.what();
+        
+        return req->create_response(restinio::status_internal_server_error())
+            .append_header("Content-Type", "application/json")
+            .set_body(error.dump())
+            .done();
+    }
+}
+
+restinio::request_handling_status_t Server::handleGenerateLetter(const restinio::request_handle_t& req) {
+    try {
+        auto body = nlohmann::json::parse(req->body());
+        auto bu_id = body["bu_id"].get<int>();
+        
+        auto letter = db_.generateComplaintLetter(bu_id);
+        
+        return req->create_response()
+            .append_header("Content-Type", "application/json")
+            .set_body(letter.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
 }
