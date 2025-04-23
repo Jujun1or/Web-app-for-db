@@ -465,3 +465,56 @@ nlohmann::json Database::bookLost(const std::string& user_name, int book_id, con
     }
     return result;
 }
+
+nlohmann::json Database::searchBooks(const std::string& query, bool search_by_author) {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        std::string sql = 
+            "SELECT b.book_id, b.title, array_agg(a.name) as authors "
+            "FROM Books b "
+            "JOIN BookAuthors ba ON b.book_id = ba.book_id "
+            "JOIN Authors a ON ba.author_id = a.author_id "
+            "WHERE " + std::string(search_by_author ? 
+                "a.name ILIKE '%' || $1 || '%'" : 
+                "b.title ILIKE '%' || $1 || '%'") + " "
+            "GROUP BY b.book_id, b.title "
+            "ORDER BY b.title";
+
+        pqxx::result res = txn.exec_params(sql, query);
+        
+        for (const auto& row : res) {
+            nlohmann::json book;
+            book["id"] = row["book_id"].as<int>();
+            book["title"] = row["title"].as<std::string>();
+            
+            std::string authors_str = row["authors"].as<std::string>();
+            std::vector<std::string> authors_list;
+
+            // Удаляем фигурные скобки в начале и конце строки
+            if (!authors_str.empty() && authors_str.front() == '{' && authors_str.back() == '}') {
+                authors_str = authors_str.substr(1, authors_str.size() - 2);
+                
+                // Разделяем авторов по запятым
+                size_t pos = 0;
+                while ((pos = authors_str.find(',')) != std::string::npos) {
+                    std::string author = authors_str.substr(0, pos);
+                    authors_list.push_back(author);
+                    authors_str.erase(0, pos + 1);
+                }
+                authors_list.push_back(authors_str); // Добавляем последнего автора
+            }
+
+            book["authors"] = authors_list;
+            result.push_back(book);
+        }
+        txn.commit();
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Search error: " + std::string(e.what()));
+    }
+    
+    return result;
+}
