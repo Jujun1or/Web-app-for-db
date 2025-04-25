@@ -308,20 +308,24 @@ async function loadOverdue() {
         if (result.data && Array.isArray(result.data)) {
             result.data.forEach(loan => {
                 const row = document.createElement('tr');
+                
+                // Добавляем класс для штрафных записей
+                if (loan.days_overdue > 365) {
+                    row.classList.add('fine-row');
+                }
+                
                 row.innerHTML = `
                     <td>${loan.user_name}</td>
                     <td>${loan.book_title}</td>
                     <td>${loan.days_overdue}</td>
                     <td>
                         <button onclick="generateLetter(${loan.bu_id})">
-                            Сгенерировать письмо
+                            ${loan.days_overdue > 365 ? 'Штрафная квитанция' : 'Письмо-напоминание'}
                         </button>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-        } else {
-            throw new Error('Некорректный формат данных');
         }
     } catch(error) {
         console.error('Ошибка:', error.message);
@@ -339,25 +343,109 @@ async function generateLetter(bu_id) {
         
         const result = await response.json();
         
-        if (!response.ok) {
-            throw new Error(result.message || 'Ошибка сервера');
-        }
-        
-        // Показываем письмо в модальном окне
         const modal = document.getElementById('letterModal');
         const content = document.getElementById('letterContent');
         
+        let buttons = '';
+        if (result.type === 'fine') {
+            buttons = `
+                <button onclick="payFine(${bu_id})">Оплатить штраф</button>
+            `;
+        } else {
+            buttons = `<button onclick="closeModal()">Закрыть</button>`;
+        }
+        
         content.innerHTML = `
-            <p>${result.letter_text.replace(/\n/g, '<br>')}</p>
+            <h3>${result.type === 'fine' ? 'Штрафная квитанция' : 'Уведомление'}</h3>
+            <div class="letter-text">${result.letter_text.replace(/\n/g, '<br>')}</div>
+            <div class="button-group">${buttons}</div>
         `;
         
         modal.style.display = 'block';
     } catch(error) {
         console.error('Ошибка:', error);
-        alert('Не удалось сгенерировать письмо: ' + error.message);
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+async function payFine(bu_id) {
+    try {
+        const response = await fetch('/pay-fine', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ bu_id: bu_id })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert('Штраф успешно оплачен! Книга списана.');
+            closeModal();
+            loadOverdue(); // Обновляем список
+        } else {
+            throw new Error(result.error || 'Ошибка оплаты');
+        }
+    } catch(error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка оплаты: ' + error.message);
     }
 }
 
 function closeModal() {
     document.getElementById('letterModal').style.display = 'none';
+}
+
+async function loadPopularBooks() {
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
+    
+    if(!start || !end) {
+        alert('Выберите период');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/reports/popular?start_date=${start}&end_date=${end}`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('popularBooks');
+        tbody.innerHTML = '';
+        
+        data.forEach(book => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${book.rank}</td>
+                <td>${book.title}</td>
+                <td>${book.authors.join(', ')}</td>
+                <td>${book.loans_count}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch(error) {
+        console.error('Ошибка:', error);
+    }
+}
+
+async function loadReadersStats() {
+    const year = document.getElementById('yearInput').value;
+    
+    try {
+        const response = await fetch(`/reports/readers?year=${year}`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('readersStats');
+        tbody.innerHTML = '';
+        
+        data.forEach(reader => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${reader.rank}</td>
+                <td>${reader.name}</td>
+                <td>${reader.books_count}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch(error) {
+        console.error('Ошибка:', error);
+    }
 }

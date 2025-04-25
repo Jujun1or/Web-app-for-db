@@ -197,74 +197,6 @@ restinio::request_handling_status_t Server::handleSearch(const restinio::request
     }
 }
 
-restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
-    const auto target = req->header().request_target();
-    
-    if(req->header().method() == restinio::http_method_get()) {
-        if(target == "/") {
-            return send_file(req, "frontend/static/index.html");
-        }
-        else if(target == "/style.css") {
-            return send_file(req, "frontend/static/style.css", "text/css; charset=utf-8");
-        }
-        else if(target == "/script.js") {
-            return send_file(req, "frontend/static/script.js", "text/javascript");
-        }
-        else if(target == "/books") {
-            return handleViewBooks(req);
-        }
-        else if(target == "/overdue") {
-            return handleGetOverdue(req);
-        }
-    }
-    else if(req->header().method() == restinio::http_method_post()) {
-        if (target == "/users"){
-            return handleAddUser(req);
-        }
-        else if (target == "/fond_top_up"){
-            return handleExternalTopUp(req);
-        }
-        else if(target == "/issue-book") {
-            return handleIssueBook(req);
-        }
-        else if(target == "/extend-book") {
-            return handleExtendBook(req);
-        }
-        else if(target == "/return-book") {
-            return handleReturnBook(req);
-        }
-        else if(target == "/lost-book") {
-            return handleLostBook(req);
-        }
-        else if(target == "/search") {
-            return handleSearch(req);
-        }
-        else if(target == "/generate-letter") {
-            return handleGenerateLetter(req);
-        }
-    }
-    
-    return req->create_response(restinio::status_not_found())
-        .append_header(restinio::http_field::content_type, "text/plain")
-        .set_body("404 Not Found")
-        .done();
-}
-
-
-void Server::start() {
-    struct my_traits : public restinio::default_traits_t {
-        using logger_t = restinio::shared_ostream_logger_t;
-    };
-
-    restinio::run(
-        restinio::on_this_thread<my_traits>()
-            .port(8080)
-            .address("localhost")
-            .request_handler([this](auto req) {
-                return this->handler(std::move(req));
-            }));
-}
-
 restinio::request_handling_status_t Server::handleGetOverdue(const restinio::request_handle_t& req) {
     try {
         nlohmann::json response;
@@ -306,3 +238,153 @@ restinio::request_handling_status_t Server::handleGenerateLetter(const restinio:
             .done();
     }
 }
+
+restinio::request_handling_status_t Server::handlePayFine(const restinio::request_handle_t& req) {
+    try {
+        auto body = nlohmann::json::parse(req->body());
+        int bu_id = body["bu_id"].get<int>();
+        
+        db_.processFinePayment(bu_id);
+        
+        return req->create_response()
+            .append_header("Content-Type", "application/json")
+            .set_body(nlohmann::json{{"status", "success"}}.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
+restinio::request_handling_status_t Server::handlePopularBooks(const restinio::request_handle_t& req) {
+    try {
+        auto params = restinio::parse_query(req->header().query());
+        
+        // Используем метод find и operator[] для доступа к параметрам
+        std::string start_date;
+        if (params.has("start_date")) {
+            start_date = params["start_date"];
+        }
+        
+        std::string end_date;
+        if (params.has("end_date")) {
+            end_date = params["end_date"];
+        }
+
+        auto result = db_.getPopularBooks(start_date, end_date);
+        
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(result.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
+restinio::request_handling_status_t Server::handleReadersStats(const restinio::request_handle_t& req) {
+    try {
+        auto params = restinio::parse_query(req->header().query());
+        
+        int year = 2025;
+        if (params.has("year")) {
+            std::string year_str{params["year"]};
+            year = std::stoi(year_str);
+        }
+
+        auto result = db_.getReadersStats(year);
+        
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(result.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
+restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
+    const auto target = req->header().request_target();
+    
+    if(req->header().method() == restinio::http_method_get()) {
+        if(target == "/") {
+            return send_file(req, "frontend/static/index.html");
+        }
+        else if(target == "/style.css") {
+            return send_file(req, "frontend/static/style.css", "text/css; charset=utf-8");
+        }
+        else if(target == "/script.js") {
+            return send_file(req, "frontend/static/script.js", "text/javascript");
+        }
+        else if(target == "/books") {
+            return handleViewBooks(req);
+        }
+        else if(target == "/overdue") {
+            return handleGetOverdue(req);
+        }
+        else if(target.starts_with("/reports/popular")) {
+            return handlePopularBooks(req);
+        }
+        else if(target.starts_with("/reports/readers")) {
+            return handleReadersStats(req);
+        }
+    }
+    else if(req->header().method() == restinio::http_method_post()) {
+        if (target == "/users"){
+            return handleAddUser(req);
+        }
+        else if (target == "/fond_top_up"){
+            return handleExternalTopUp(req);
+        }
+        else if(target == "/issue-book") {
+            return handleIssueBook(req);
+        }
+        else if(target == "/extend-book") {
+            return handleExtendBook(req);
+        }
+        else if(target == "/return-book") {
+            return handleReturnBook(req);
+        }
+        else if(target == "/lost-book") {
+            return handleLostBook(req);
+        }
+        else if(target == "/search") {
+            return handleSearch(req);
+        }
+        else if(target == "/generate-letter") {
+            return handleGenerateLetter(req);
+        }
+        else if(target == "/pay-fine") {
+            return handlePayFine(req);
+        }
+    }
+    
+    return req->create_response(restinio::status_not_found())
+        .append_header(restinio::http_field::content_type, "text/plain")
+        .set_body("404 Not Found")
+        .done();
+}
+
+
+void Server::start() {
+    struct my_traits : public restinio::default_traits_t {
+        using logger_t = restinio::shared_ostream_logger_t;
+    };
+
+    restinio::run(
+        restinio::on_this_thread<my_traits>()
+            .port(8080)
+            .address("localhost")
+            .request_handler([this](auto req) {
+                return this->handler(std::move(req));
+            }));
+}
+

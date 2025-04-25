@@ -16,6 +16,9 @@ public:
     nlohmann::json bookReturn(const std::string& user_name, int book_id, const std::string& date);
     nlohmann::json searchBooks(const std::string& query, bool search_by_author);
     nlohmann::json generateComplaintLetter(int bu_id);
+    void processFinePayment(int bu_id);
+    nlohmann::json getPopularBooks(const std::string& start_date, const std::string& end_date);
+    nlohmann::json getReadersStats(int year);
 
 private:
     pqxx::connection conn_;

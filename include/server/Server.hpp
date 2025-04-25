@@ -23,4 +23,8 @@ private:
 
     restinio::request_handling_status_t handleGetOverdue(const restinio::request_handle_t& req);
     restinio::request_handling_status_t handleGenerateLetter(const restinio::request_handle_t& req);
+    restinio::request_handling_status_t handlePayFine(const restinio::request_handle_t& req);
+
+    restinio::request_handling_status_t handlePopularBooks(const restinio::request_handle_t& req);
+    restinio::request_handling_status_t handleReadersStats(const restinio::request_handle_t& req);
 };

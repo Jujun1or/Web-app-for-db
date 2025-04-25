@@ -118,8 +118,36 @@
     <div id="letterModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
-            <h3>Ругательное письмо</h3>
             <div id="letterContent"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Отчеты</h2>
+        
+        <div class="report">
+            <h3>Популярные книги</h3>
+            <input type="date" id="startDate">
+            <input type="date" id="endDate">
+            <button onclick="loadPopularBooks()">Показать</button>
+            <table>
+                <thead>
+                    <tr><th>#</th><th>Название</th><th>Авторы</th><th>Количество выдач</th></tr>
+                </thead>
+                <tbody id="popularBooks"></tbody>
+            </table>
+        </div>
+    
+        <div class="report">
+            <h3>Статистика читателей</h3>
+            <input type="number" id="yearInput" min="2000" max="2100" value="2024">
+            <button onclick="loadReadersStats()">Показать</button>
+            <table>
+                <thead>
+                    <tr><th>#</th><th>Имя</th><th>Количество книг</th></tr>
+                </thead>
+                <tbody id="readersStats"></tbody>
+            </table>
         </div>
     </div>
 

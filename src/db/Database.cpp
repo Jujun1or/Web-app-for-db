@@ -119,6 +119,7 @@ nlohmann::json Database::getAllBooks() {
     return result;
 }
 
+
 nlohmann::json Database::addNewReader(const std::string& name, const std::string& date) {
     nlohmann::json result;
     pqxx::work txn(conn_);
@@ -533,7 +534,7 @@ nlohmann::json Database::getOverdueLoans() {
     
     try {
         std::string sql = 
-            "SELECT u.name, b.title, bu.bu_id, bu.issue_date, bu.duration, "
+            "SELECT u.name, b.title, b.price, bu.bu_id, b.book_id, "
             "(CURRENT_DATE - (bu.issue_date + bu.duration)) AS days_overdue "
             "FROM BookUser bu "
             "JOIN Users u ON bu.user_id = u.user_id "
@@ -546,18 +547,64 @@ nlohmann::json Database::getOverdueLoans() {
         for (const auto& row : res) {
             nlohmann::json record;
             record["bu_id"] = row["bu_id"].as<int>();
+            record["book_id"] = row["book_id"].as<int>();
             record["user_name"] = row["name"].as<std::string>();
             record["book_title"] = row["title"].as<std::string>();
             record["days_overdue"] = row["days_overdue"].as<int>();
+            record["price"] = row["price"].as<int>();
+            record["overdue_type"] = (record["days_overdue"] > 365) ? "fine" : "warning";
+            
             result.push_back(record);
         }
         txn.commit();
     }
     catch (const std::exception& e) {
         txn.abort();
-        throw std::runtime_error("Ошибка получения просрочек: " + std::string(e.what()));
+        throw;
     }
     return result;
+}
+
+void Database::processFinePayment(int bu_id) {
+    pqxx::work txn(conn_);
+    try {
+        // Получаем данные о штрафе
+        pqxx::row row = txn.exec_params1(
+            "SELECT b.book_id, b.price "
+            "FROM BookUser bu "
+            "JOIN Books b ON bu.book_id = b.book_id "
+            "WHERE bu.bu_id = $1", 
+            bu_id);
+
+        int book_id = row["book_id"].as<int>();
+        int price = row["price"].as<int>();
+
+        // 1. Добавляем штраф в Fond
+        txn.exec_params(
+            "INSERT INTO Fond (operation_type, book_id, summ, date) "
+            "VALUES ($1, $2, $3, CURRENT_DATE)",
+            static_cast<int>(Operation_type::FINE),
+            book_id,
+            price * 3);
+
+        // 2. Помечаем книгу как возвращенную с датой-заглушкой
+        txn.exec_params(
+            "UPDATE BookUser SET return_date = '1111-11-11' "
+            "WHERE bu_id = $1",
+            bu_id);
+
+        // 3. Уменьшаем общее количество книг
+        txn.exec_params(
+            "UPDATE Books SET total_amount = total_amount - 1 "
+            "WHERE book_id = $1",
+            book_id);
+
+        txn.commit();
+    }
+    catch (...) {
+        txn.abort();
+        throw;
+    }
 }
 
 nlohmann::json Database::generateComplaintLetter(int bu_id) {
@@ -566,7 +613,7 @@ nlohmann::json Database::generateComplaintLetter(int bu_id) {
     
     try {
         pqxx::row row = txn.exec_params1(
-            "SELECT u.name, b.title, "
+            "SELECT u.name, b.title, b.price, "
             "(CURRENT_DATE - (bu.issue_date + bu.duration)) AS days_overdue "
             "FROM BookUser bu "
             "JOIN Users u ON bu.user_id = u.user_id "
@@ -577,16 +624,25 @@ nlohmann::json Database::generateComplaintLetter(int bu_id) {
         std::string userName = row["name"].as<std::string>();
         std::string bookTitle = row["title"].as<std::string>();
         int daysOverdue = row["days_overdue"].as<int>();
+        int price = row["price"].as<int>();
 
-        letter["user_name"] = userName;
-        letter["book_title"] = bookTitle;
-        letter["days_overdue"] = daysOverdue;
-        letter["letter_text"] = 
-            "Уважаемый(ая) " + userName + ",\n\n" +
-            "Напоминаем, что книга \"" + bookTitle + "\" была должна быть возвращена " + 
-            std::to_string(daysOverdue) + " дней назад.\n\n" +
-            "Просим немедленно вернуть издание в библиотеку, в противном случае будут применены штрафные санкции.\n\n" +
-            "С уважением,\nАдминистрация библиотеки";
+        if (daysOverdue > 365) {
+            letter["type"] = "fine";
+            letter["letter_text"] = 
+                "Уважаемый(ая) " + userName + ",\n\n" +
+                "В связи с просрочкой возврата книги \"" + bookTitle + "\" на " + 
+                std::to_string(daysOverdue) + " дней, на вас наложен штраф.\n\n" +
+                "Сумма штрафа: " + std::to_string(price * 3) + " руб. (300% от стоимости книги)\n" +
+                "С уважением,\nАдминистрация библиотеки";
+        } else {
+            letter["type"] = "warning";
+            letter["letter_text"] = 
+                "Уважаемый(ая) " + userName + ",\n\n" +
+                "Напоминаем, что книга \"" + bookTitle + "\" была должна быть возвращена " + 
+                std::to_string(daysOverdue) + " дней назад.\n\n" +
+                "Просим немедленно вернуть издание в библиотеку.\n\n" +
+                "С уважением,\nАдминистрация библиотеки";
+        }
         
         txn.commit();
     }
@@ -596,3 +652,97 @@ nlohmann::json Database::generateComplaintLetter(int bu_id) {
     }
     return letter;
 }
+
+nlohmann::json Database::getPopularBooks(const std::string& start_date, const std::string& end_date) {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        std::string sql = 
+            "SELECT b.title, COUNT(*) AS loans_count, "
+            "string_agg(DISTINCT a.name, ', ') AS authors " // Используем string_agg вместо array_agg
+            "FROM BookUser bu "
+            "JOIN Books b ON bu.book_id = b.book_id "
+            "JOIN BookAuthors ba ON b.book_id = ba.book_id "
+            "JOIN Authors a ON ba.author_id = a.author_id "
+            "WHERE bu.issue_date BETWEEN $1 AND $2 "
+            "GROUP BY b.title "
+            "ORDER BY loans_count DESC "
+            "LIMIT 10";
+
+        pqxx::result res = txn.exec_params(sql, start_date, end_date);
+        
+        int rank = 1;
+        for (const auto& row : res) {
+            nlohmann::json book;
+            book["rank"] = rank++;
+            book["title"] = row["title"].as<std::string>();
+            book["loans_count"] = row["loans_count"].as<int>();
+            
+            // Обработка авторов
+            std::string authors_str = row["authors"].as<std::string>();
+            std::vector<std::string> authors_list;
+            
+            // Удаляем фигурные скобки если есть
+            if (!authors_str.empty()) {
+                if (authors_str.front() == '{') authors_str.erase(0, 1);
+                if (authors_str.back() == '}') authors_str.pop_back();
+            }
+            
+            // Разделяем строку по запятым
+            size_t pos = 0;
+            while ((pos = authors_str.find(',')) != std::string::npos) {
+                std::string author = authors_str.substr(0, pos);
+                authors_list.push_back(author.erase(author.find_last_not_of(' ') + 1)); // Удаляем пробелы справа
+                authors_str.erase(0, pos + 1);
+            }
+            if (!authors_str.empty()) {
+                authors_list.push_back(authors_str.erase(authors_str.find_last_not_of(' ') + 1));
+            }
+            
+            book["authors"] = authors_list;
+            result.push_back(book);
+        }
+        txn.commit();
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Ошибка получения популярных книг: " + std::string(e.what()));
+    }
+    return result;
+}
+
+nlohmann::json Database::getReadersStats(int year) {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        std::string sql = 
+            "SELECT u.name, COUNT(*) AS books_count "
+            "FROM BookUser bu "
+            "JOIN Users u ON bu.user_id = u.user_id "
+            "WHERE bu.return_date IS NOT NULL "
+            "AND bu.return_date != '1111-11-11' "
+            "AND EXTRACT(YEAR FROM bu.return_date) = $1 "
+            "GROUP BY u.name "
+            "ORDER BY books_count DESC";
+
+        pqxx::result res = txn.exec_params(sql, year);
+        
+        int rank = 1;
+        for (const auto& row : res) {
+            nlohmann::json reader;
+            reader["rank"] = rank++;
+            reader["name"] = row["name"].as<std::string>();
+            reader["books_count"] = row["books_count"].as<int>();
+            result.push_back(reader);
+        }
+        txn.commit();
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Ошибка получения статистики: " + std::string(e.what()));
+    }
+    return result;
+}
+
