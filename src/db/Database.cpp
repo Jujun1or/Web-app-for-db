@@ -746,3 +746,139 @@ nlohmann::json Database::getReadersStats(int year) {
     return result;
 }
 
+nlohmann::json Database::getFinancialReport(int year) {
+    nlohmann::json report = nlohmann::json::object();
+    pqxx::work txn(conn_);
+    
+    try {
+        // 1. Общая стоимость книг
+        pqxx::row total_books = txn.exec_params1(
+            "SELECT SUM(price * total_amount) FROM Books");
+        int total_assets = total_books[0].as<int>();
+
+        // 2. Сбор данных по месяцам
+        nlohmann::json months = nlohmann::json::array();
+        std::array<int, 4> q_expenses = {0}, q_income = {0}, q_total = {0};
+
+        for (int month = 1; month <= 12; ++month) {
+            // 2.1. Получаем расходы (стоимость книг для LOST/FINE)
+            pqxx::row expenses_row = txn.exec_params1(
+                "SELECT COALESCE(SUM(b.price), 0) "
+                "FROM Fond f "
+                "JOIN Books b ON f.book_id = b.book_id "
+                "WHERE EXTRACT(YEAR FROM f.date) = $1 "
+                "AND EXTRACT(MONTH FROM f.date) = $2 "
+                "AND f.operation_type IN (2, 3)", // LOST и FINE
+                year, 
+                month);
+            
+            int expenses = expenses_row[0].as<int>();
+
+            // 2.2. Получаем доходы (оригинальная логика)
+            pqxx::row income_row = txn.exec_params1(
+                "SELECT COALESCE(SUM(summ), 0) "
+                "FROM Fond "
+                "WHERE EXTRACT(YEAR FROM date) = $1 "
+                "AND EXTRACT(MONTH FROM date) = $2 "
+                "AND operation_type IN (1, 2, 3)", // EXTERNAL, LOST, FINE
+                year,
+                month);
+            
+            int income = income_row[0].as<int>();
+
+            // 2.3. Рассчитываем квартал
+            int quarter = (month - 1) / 3;
+            
+            // 2.4. Сохраняем данные месяца
+            nlohmann::json month_data;
+            month_data["month"] = month;
+            month_data["expenses"] = expenses;
+            month_data["income"] = income;
+            months.push_back(month_data);
+
+            // 2.5. Обновляем квартальные суммы
+            q_expenses[quarter] += expenses;
+            q_income[quarter] += income;
+            q_total[quarter] += (income - expenses);
+        }
+
+        // 3. Формирование отчета
+        report["months"] = months;
+        report["total_assets"] = total_assets;
+        
+        // 4. Расчет годовых итогов
+        int total_expenses = std::accumulate(q_expenses.begin(), q_expenses.end(), 0);
+        int total_income = std::accumulate(q_income.begin(), q_income.end(), 0);
+        int total_profit = total_assets + (total_income - total_expenses);
+
+        report["year_total"] = {
+            {"expenses", total_expenses},
+            {"income", total_income},
+            {"total", total_assets + total_profit}
+        };
+
+        txn.commit();
+    }
+    catch(const std::exception& e) {
+        txn.abort();
+        throw std::runtime_error("Ошибка формирования отчета: " + std::string(e.what()));
+    }
+    
+    return report;
+}
+
+nlohmann::json Database::deactivateInactiveUsers() {
+    nlohmann::json result;
+    pqxx::work txn(conn_);
+    
+    try {
+        // 1. Находим пользователей для отчисления
+        std::string select_sql = 
+            "SELECT user_id, name "
+            "FROM Users "
+            "WHERE is_active = TRUE "
+            "AND last_activity < CURRENT_DATE - INTERVAL '1 year' "
+            "AND user_id NOT IN ("
+            "   SELECT user_id FROM BookUser "
+            "   WHERE return_date IS NULL"
+            ")";
+        
+        pqxx::result res = txn.exec(select_sql);
+        
+        // 2. Формируем список отчисленных
+        nlohmann::json deactivated = nlohmann::json::array();
+        for (const auto& row : res) {
+            nlohmann::json user;
+            user["user_id"] = row["user_id"].as<int>();
+            user["name"] = row["name"].as<std::string>();
+            deactivated.push_back(user);
+        }
+        
+        // 3. Обновляем статус пользователей
+        if (!deactivated.empty()) {
+            txn.exec(
+                "UPDATE Users SET is_active = FALSE "
+                "WHERE user_id IN ("
+                "   SELECT user_id FROM Users "
+                "   WHERE is_active = TRUE "
+                "   AND last_activity < CURRENT_DATE - INTERVAL '1 year' "
+                "   AND user_id NOT IN ("
+                "       SELECT user_id FROM BookUser "
+                "       WHERE return_date IS NULL"
+                "   )"
+                ")"
+            );
+        }
+        
+        txn.commit();
+        result["status"] = "success";
+        result["deactivated_users"] = deactivated;
+    }
+    catch (const std::exception& e) {
+        txn.abort();
+        result["status"] = "error";
+        result["message"] = "Ошибка отчисления: " + std::string(e.what());
+    }
+    
+    return result;
+}

@@ -27,4 +27,8 @@ private:
 
     restinio::request_handling_status_t handlePopularBooks(const restinio::request_handle_t& req);
     restinio::request_handling_status_t handleReadersStats(const restinio::request_handle_t& req);
+    restinio::request_handling_status_t handleFinancialReport(const restinio::request_handle_t& req);
+    restinio::request_handling_status_t handleDeactivateUsers(const restinio::request_handle_t& req);
+
+
 };

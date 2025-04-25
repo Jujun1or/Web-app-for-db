@@ -143,3 +143,41 @@ input {
     width: 100%;
     margin-top: 10px;
 }
+
+.quarter-header {
+    background-color: #f0f0f0;
+    font-weight: bold;
+}
+
+.quarter-total {
+    background-color: #e0e0e0;
+}
+
+.year-total {
+    background-color: #d0d0d0;
+    font-weight: bold;
+}
+
+#financialReport table {
+    width: 100%;
+    margin-top: 20px;
+    border-collapse: collapse;
+}
+
+#financialReport td, #financialReport th {
+    padding: 8px;
+    border: 1px solid #ddd;
+    text-align: center;
+}
+
+#deactivationResult table {
+    width: 100%;
+    margin-top: 10px;
+    border-collapse: collapse;
+}
+
+#deactivationResult th, #deactivationResult td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+}

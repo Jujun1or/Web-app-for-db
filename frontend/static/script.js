@@ -449,3 +449,121 @@ async function loadReadersStats() {
         console.error('Ошибка:', error);
     }
 }
+
+async function loadFinancialReport() {
+    try {
+        const monthsNames = [
+            'Январь', 'Февраль', 'Март', 'Апрель',
+            'Май', 'Июнь', 'Июль', 'Август',
+            'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+        ];
+
+        const yearInput = document.getElementById('reportYear');
+        const year = yearInput.value;
+        
+        if (!year) {
+            alert('Пожалуйста, введите год');
+            return;
+        }
+
+        const response = await fetch(`/reports/financial?year=${year}`);
+        const report = await response.json();
+        
+        const tbody = document.getElementById('reportBody');
+        tbody.innerHTML = '';
+
+        let quarter = 1;
+        let qExpenses = 0, qIncome = 0, qTotal = 0;
+        let yExpenses = 0, yIncome = 0, yTotal = 0;
+
+        report.months.forEach((monthData, index) => {
+            const monthName = monthsNames[monthData.month - 1];
+            
+            if (index % 3 === 0) {
+                tbody.innerHTML += `
+                <tr class="quarter-header">
+                    <td colspan="4">Квартал ${quarter}</td>
+                </tr>`;
+            }
+
+            tbody.innerHTML += `
+            <tr>
+                <td>${monthName}</td>
+                <td>${monthData.expenses}</td>
+                <td>${monthData.income}</td>
+                <td>${monthData.income - monthData.expenses}</td>
+            </tr>`;
+
+            qExpenses += monthData.expenses;
+            qIncome += monthData.income;
+            qTotal += monthData.income - monthData.expenses;
+
+            if ((index + 1) % 3 === 0) {
+                tbody.innerHTML += `
+                <tr class="quarter-total">
+                    <td>Итого за квартал ${quarter}</td>
+                    <td>${qExpenses}</td>
+                    <td>${qIncome}</td>
+                    <td>${qTotal}</td>
+                </tr>`;
+
+                yExpenses += qExpenses;
+                yIncome += qIncome;
+                yTotal += qTotal;
+
+                qExpenses = qIncome = qTotal = 0;
+                quarter++;
+            }
+        });
+
+        tbody.innerHTML += `
+        <tr class="year-total">
+            <td>Годовой итог</td>
+            <td>${yExpenses}</td>
+            <td>${yIncome}</td>
+            <td>${yTotal}</td>
+        </tr>
+        <tr class="total-assets">
+            <td colspan="3">Общая стоимость фондов</td>
+            <td>${report.total_assets + yTotal}</td>
+        </tr>`;
+        
+    } catch(error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка загрузки отчета: ' + error.message);
+    }
+}
+
+async function checkInactiveUsers() {
+    try {
+        const response = await fetch('/deactivate-users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        const result = await response.json();
+        const tbody = document.getElementById('deactivatedUsers');
+        tbody.innerHTML = '';
+        
+        if (result.status === 'success') {
+            result.deactivated_users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${user.user_id}</td>
+                    <td>${user.name}</td>
+                    <td>Отчислен</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            if (result.deactivated_users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">Нет пользователей для отчисления</td></tr>';
+            }
+        } else {
+            alert('Ошибка: ' + result.message);
+        }
+    } catch(error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка выполнения операции');
+    }
+}

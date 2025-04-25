@@ -311,6 +311,45 @@ restinio::request_handling_status_t Server::handleReadersStats(const restinio::r
     }
 }
 
+restinio::request_handling_status_t Server::handleFinancialReport(const restinio::request_handle_t& req) {
+    try {
+        auto params = restinio::parse_query(req->header().query());
+        int year = 2024;
+        
+        if(params.has("year")) {
+            std::string year_str{params["year"]};
+            year = std::stoi(year_str);
+        }
+
+        auto result = db_.getFinancialReport(year);
+        
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(result.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
+restinio::request_handling_status_t Server::handleDeactivateUsers(const restinio::request_handle_t& req) {
+    try {
+        auto result = db_.deactivateInactiveUsers();
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(result.dump())
+            .done();
+    }
+    catch(const std::exception& e) {
+        return req->create_response(restinio::status_bad_request())
+            .set_body(nlohmann::json{{"error", e.what()}}.dump())
+            .done();
+    }
+}
+
 restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
     const auto target = req->header().request_target();
     
@@ -335,6 +374,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         }
         else if(target.starts_with("/reports/readers")) {
             return handleReadersStats(req);
+        }
+        else if(target.starts_with("/reports/financial")) {
+            return handleFinancialReport(req);
         }
     }
     else if(req->header().method() == restinio::http_method_post()) {
@@ -364,6 +406,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         }
         else if(target == "/pay-fine") {
             return handlePayFine(req);
+        }
+        else if(target == "/deactivate-users") {
+            return handleDeactivateUsers(req);
         }
     }
     
