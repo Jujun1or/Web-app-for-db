@@ -298,38 +298,27 @@ async function loadOverdue() {
         const response = await fetch('/overdue');
         const result = await response.json();
         
-        if (!response.ok) {
-            throw new Error(result.message || 'Ошибка сервера');
-        }
+        if (!response.ok) throw new Error(result.message);
         
         const tbody = document.getElementById('overdueBody');
         tbody.innerHTML = '';
         
-        if (result.data && Array.isArray(result.data)) {
-            result.data.forEach(loan => {
-                const row = document.createElement('tr');
-                
-                // Добавляем класс для штрафных записей
-                if (loan.days_overdue > 365) {
-                    row.classList.add('fine-row');
-                }
-                
-                row.innerHTML = `
-                    <td>${loan.user_name}</td>
-                    <td>${loan.book_title}</td>
-                    <td>${loan.days_overdue}</td>
-                    <td>
-                        <button onclick="generateLetter(${loan.bu_id})">
-                            ${loan.days_overdue > 365 ? 'Штрафная квитанция' : 'Письмо-напоминание'}
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
+        result.data.forEach(loan => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${loan.user_name}</td>
+                <td>${loan.book_title}</td>
+                <td>${loan.days_overdue}</td>
+                <td>
+                    <button onclick="generateLetter(${loan.bu_id})">
+                        ${loan.days_overdue > 365 ? 'Штрафная квитанция' : 'Письмо-напоминание'}
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
     } catch(error) {
-        console.error('Ошибка:', error.message);
-        alert('Не удалось загрузить данные: ' + error.message);
+        console.error('Ошибка:', error);
     }
 }
 
@@ -567,3 +556,25 @@ async function checkInactiveUsers() {
         alert('Ошибка выполнения операции');
     }
 }
+
+
+function openTab(tabId, element) {
+    // Скрыть все вкладки
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Убрать активный класс у всех кнопок
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Показать выбранную вкладку
+    document.getElementById(tabId).classList.add('active');
+    element.classList.add('active');
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelector('.tab-btn').click();
+});

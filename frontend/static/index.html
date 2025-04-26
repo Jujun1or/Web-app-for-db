@@ -2,136 +2,182 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Библиотека</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Management System</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="section">
-        <h2>Книги</h2>
-        <button onclick="loadBooks()">Показать все книги</button>
-        <div id="bookList"></div>
+    <div class="main-container">
+        <div class="tab-buttons">
+            <h1 class="logo">
+                <i class="fas fa-book-open"></i>
+                DigitalLib
+            </h1>
+            <button class="tab-btn active" onclick="openTab('general', this)">Общее</button>
+            <button class="tab-btn" onclick="openTab('users', this)">Читатели</button>
+            <button class="tab-btn" onclick="openTab('reports', this)">Отчеты</button>
+        </div>
+
+        <!-- Вкладка Общее -->
+        <div id="general" class="tab-content active">
+            <div class="section">
+                <h2>Книги</h2>
+                <button onclick="loadBooks()">Показать все книги</button>
+                <div id="bookList"></div>
+            </div>
+
+            <div class="section">
+                <h2>Создать пользователя</h2>
+                <input type="text" id="userName" placeholder="Имя пользователя">
+                <input type="date" id="userDate">
+                <button onclick="createUser()">Создать</button>
+                <div id="userStatus"></div>
+            </div>
+
+            <div class="section">
+                <h2>Пополнение фонда</h2>
+                <input type="text" id="summ" placeholder="Сумма пополнения">
+                <input type="date" id="topUpDate">
+                <button onclick="topUpFund()">Пополнить</button>
+                <div id="topUpStatus"></div>
+            </div>
+
+            <div class="section">
+                <h2>Просроченные книги</h2>
+                <button onclick="loadOverdue()">Проверить просрочки</button>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Пользователь</th>
+                            <th>Книга</th>
+                            <th>Дней просрочки</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overdueBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Вкладка Читатели -->
+        <div id="users" class="tab-content">
+            <div class="section">
+                <h2>Операции с книгами</h2>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                    <div>
+                        <h3>Выдача книги</h3>
+                        <input type="text" id="issueUserName" placeholder="Имя пользователя">
+                        <input type="number" id="issueBookId" placeholder="ID книги">
+                        <input type="date" id="issueDate">
+                        <button onclick="issueBook()">Выдать книгу</button>
+                        <div id="issueStatus"></div>
+                    </div>
+                    
+                    <div>
+                        <h3>Продление книги</h3>
+                        <input type="text" id="extendUserName" placeholder="Имя пользователя">
+                        <input type="number" id="extendBookId" placeholder="ID книги">
+                        <input type="number" id="extensionDays" placeholder="Дней продления" min="1">
+                        <button onclick="extendBook()">Продлить книгу</button>
+                        <div id="extendStatus"></div>
+                    </div>
+
+                    <div>
+                        <h3>Возврат книги</h3>
+                        <input type="text" id="returnUserName" placeholder="Имя пользователя">
+                        <input type="number" id="returnBookId" placeholder="ID книги">
+                        <input type="date" id="returnDate">
+                        <button onclick="returnBook()">Вернуть книгу</button>
+                        <div id="returnStatus"></div>
+                    </div>
+
+                    <div>
+                        <h3>Утеря книги</h3>
+                        <input type="text" id="lostUserName" placeholder="Имя пользователя">
+                        <input type="number" id="lostBookId" placeholder="ID книги">
+                        <input type="date" id="lostDate">
+                        <button onclick="reportLostBook()">Сообщить об утере</button>
+                        <div id="lostStatus"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Поиск книг</h2>
+                <div class="search-controls">
+                    <label>
+                        <input type="radio" name="searchType" value="title" checked> По названию
+                    </label>
+                    <label>
+                        <input type="radio" name="searchType" value="author"> По автору
+                    </label>
+                </div>
+                <input type="text" id="searchQuery" placeholder="Введите запрос...">
+                <button onclick="performSearch()">Искать</button>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Название</th>
+                            <th>Авторы</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Вкладка Отчеты -->
+        <div id="reports" class="tab-content">
+            <div class="section">
+                <h2>Отчеты</h2>
+                
+                <div class="report">
+                    <h3>Популярные книги</h3>
+                    <input type="date" id="startDate">
+                    <input type="date" id="endDate">
+                    <button onclick="loadPopularBooks()">Показать</button>
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Название</th><th>Авторы</th><th>Количество выдач</th></tr>
+                        </thead>
+                        <tbody id="popularBooks"></tbody>
+                    </table>
+                </div>
+
+                <div class="report">
+                    <h3>Статистика читателей</h3>
+                    <input type="number" id="yearInput" min="2000" max="2100" value="2024">
+                    <button onclick="loadReadersStats()">Показать</button>
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Имя</th><th>Количество книг</th></tr>
+                        </thead>
+                        <tbody id="readersStats"></tbody>
+                    </table>
+                </div>
+
+                <div class="report">
+                    <h3>Финансовый отчет</h3>
+                    <input type="number" id="reportYear" min="2000" max="2100" value="2024">
+                    <button onclick="loadFinancialReport()">Сформировать</button>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Месяц</th>
+                                <th>Расходы</th>
+                                <th>Доходы</th>
+                                <th>Итог</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="section">
-        <h2>Создать пользователя</h2>
-        <input type="text" id="userName" placeholder="Имя пользователя">
-        <input type="date" id="userDate">
-        <button onclick="createUser()">Создать</button>
-        <div id="userStatus"></div>
-    </div>
-
-    <div class="section">
-        <h2>Пополение фонда</h2>
-        <input type="text" id="summ" placeholder="Сумма пополнения">
-        <input type="date" id="topUpDate">
-        <button onclick="topUpFund()">Пополнить</button>
-        <div id="topUpStatus"></div>
-    </div>
-
-    <div class="operations">
-        <!-- Выдача книги -->
-        <div class="section">
-            <h2>Выдача книги</h2>
-            <input type="text" id="issueUserName" placeholder="Имя пользователя">
-            <input type="number" id="issueBookId" placeholder="ID книги">
-            <input type="date" id="issueDate">
-            <button onclick="issueBook()">Выдать книгу</button>
-            <div id="issueStatus"></div>
-        </div>
-        
-        <div class="section">
-            <h2>Продление книги</h2>
-            <input type="text" id="extendUserName" placeholder="Имя пользователя">
-            <input type="number" id="extendBookId" placeholder="ID книги">
-            <input type="number" id="extensionDays" placeholder="Дней продления" min="1">
-            <button onclick="extendBook()">Продлить книгу</button>
-            <div id="extendStatus"></div>
-        </div>
-    
-        <!-- Возврат книги -->
-        <div class="section">
-            <h2>Возврат книги</h2>
-            <input type="text" id="returnUserName" placeholder="Имя пользователя">
-            <input type="number" id="returnBookId" placeholder="ID книги">
-            <input type="date" id="returnDate">
-            <button onclick="returnBook()">Вернуть книгу</button>
-            <div id="returnStatus"></div>
-        </div>
-    
-        <!-- Утеря книги -->
-        <div class="section">
-            <h2>Утеря книги</h2>
-            <input type="text" id="lostUserName" placeholder="Имя пользователя">
-            <input type="number" id="lostBookId" placeholder="ID книги">
-            <input type="date" id="lostDate">
-            <button onclick="reportLostBook()">Сообщить об утере</button>
-            <div id="lostStatus"></div>
-        </div>
-    </div>
-
-    <div class="section">
-        <h2>Поиск книг</h2>
-        <div class="search-controls">
-            <label>
-                <input type="radio" name="searchType" value="title" checked> По названию
-            </label>
-            <label>
-                <input type="radio" name="searchType" value="author"> По автору
-            </label>
-        </div>
-        <input type="text" id="searchQuery" placeholder="Введите запрос...">
-        <button onclick="performSearch()">Искать</button>
-        
-        <div id="searchResults">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Название</th>
-                        <th>Авторы</th>
-                    </tr>
-                </thead>
-                <tbody id="resultsBody"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="section">
-        <h2>Просроченные книги</h2>
-        <button onclick="loadOverdue()">Проверить просрочки</button>
-        <div id="overdueList">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Пользователь</th>
-                        <th>Книга</th>
-                        <th>Дней просрочки</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="overdueBody"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="section">
-        <h2>Управление пользователями</h2>
-        <button onclick="checkInactiveUsers()">Проверить активность</button>
-        <div id="deactivationResult">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Имя</th>
-                        <th>Статус</th>
-                    </tr>
-                </thead>
-                <tbody id="deactivatedUsers"></tbody>
-            </table>
-        </div>
-    </div>
-    
+    <!-- Модальное окно должно быть ВНЕ основных вкладок -->
     <div id="letterModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
@@ -139,54 +185,6 @@
         </div>
     </div>
 
-    <div class="section">
-        <h2>Отчеты</h2>
-        
-        <div class="report">
-            <h3>Популярные книги</h3>
-            <input type="date" id="startDate">
-            <input type="date" id="endDate">
-            <button onclick="loadPopularBooks()">Показать</button>
-            <table>
-                <thead>
-                    <tr><th>#</th><th>Название</th><th>Авторы</th><th>Количество выдач</th></tr>
-                </thead>
-                <tbody id="popularBooks"></tbody>
-            </table>
-        </div>
-    
-        <div class="report">
-            <h3>Статистика читателей</h3>
-            <input type="number" id="yearInput" min="2000" max="2100" value="2024">
-            <button onclick="loadReadersStats()">Показать</button>
-            <table>
-                <thead>
-                    <tr><th>#</th><th>Имя</th><th>Количество книг</th></tr>
-                </thead>
-                <tbody id="readersStats"></tbody>
-            </table>
-        </div>
-
-        <h2>Финансовый отчет</h2>
-        <input type="number" id="reportYear" min="2000" max="2100" value="2024">
-        <button onclick="loadFinancialReport()">Сформировать</button>
-        
-        <div id="financialReport">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Месяц</th>
-                        <th>Расходы</th>
-                        <th>Доходы</th>
-                        <th>Итог</th>
-                    </tr>
-                </thead>
-                <tbody id="reportBody"></tbody>
-            </table>
-        </div>
-    </div>
-
     <script src="/script.js"></script>
 </body>
 </html>
-
