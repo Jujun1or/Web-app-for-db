@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Library Management System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -57,7 +58,27 @@
                     <tbody id="overdueBody"></tbody>
                 </table>
             </div>
+            
+            <div class="section">
+                <h2>Управление пользователями</h2>
+                <button class="action-btn" onclick="checkInactiveUsers()">Проверить активность</button>
+                <div id="deactivationResult">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Имя</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deactivatedUsers"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
+        </div>
+
 
         <!-- Вкладка Читатели -->
         <div id="users" class="tab-content">
