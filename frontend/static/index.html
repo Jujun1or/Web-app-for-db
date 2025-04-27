@@ -81,45 +81,64 @@
         <!-- Вкладка Читатели -->
         <div id="users" class="tab-content">
             <div class="section">
+                <h2>Выбор читателя</h2>
+                <div class="user-search">
+                    <input type="text" id="userNameInput" placeholder="Введите имя читателя">
+                    <button onclick="findUser()">Найти</button>
+                </div>
+                <div id="userSearchStatus"></div>
+                <div id="currentBooks">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID записи</th>
+                                <th>Название</th>
+                                <th>Дата выдачи</th>
+                                <th>Срок (дней)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="currentBooksBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        
+            <div class="section">
                 <h2>Операции с книгами</h2>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                <div class="operations-grid">
                     <div>
                         <h3>Выдача книги</h3>
-                        <input type="text" id="issueUserName" placeholder="Имя пользователя">
-                        <input type="number" id="issueBookId" placeholder="ID книги">
-                        <input type="date" id="issueDate">
-                        <button onclick="issueBook()">Выдать книгу</button>
-                        <div id="issueStatus"></div>
+                        <input type="number" id="selectedBookId" placeholder="ID книги">
+                        <input type="date" id="selectedIssueDate">
+                        <button onclick="issueBookToSelectedUser()">Выдать книгу</button>
+                        <div id="selectedIssueStatus"></div>
                     </div>
                     
                     <div>
                         <h3>Продление книги</h3>
-                        <input type="text" id="extendUserName" placeholder="Имя пользователя">
-                        <input type="number" id="extendBookId" placeholder="ID книги">
-                        <input type="number" id="extensionDays" placeholder="Дней продления" min="1">
-                        <button onclick="extendBook()">Продлить книгу</button>
-                        <div id="extendStatus"></div>
+                        <input type="number" id="selectedExtendBookId" placeholder="ID книги">
+                        <input type="number" id="selectedExtensionDays" placeholder="Дней продления" min="1">
+                        <button onclick="extendBookForSelectedUser()">Продлить книгу</button>
+                        <div id="selectedExtendStatus"></div>
                     </div>
-
+        
                     <div>
                         <h3>Возврат книги</h3>
-                        <input type="text" id="returnUserName" placeholder="Имя пользователя">
-                        <input type="number" id="returnBookId" placeholder="ID книги">
-                        <input type="date" id="returnDate">
-                        <button onclick="returnBook()">Вернуть книгу</button>
-                        <div id="returnStatus"></div>
+                        <input type="number" id="selectedReturnBookId" placeholder="ID книги">
+                        <input type="date" id="selectedReturnDate">
+                        <button onclick="returnBookForSelectedUser()">Вернуть книгу</button>
+                        <div id="selectedReturnStatus"></div>
                     </div>
-
+        
                     <div>
                         <h3>Утеря книги</h3>
-                        <input type="text" id="lostUserName" placeholder="Имя пользователя">
-                        <input type="number" id="lostBookId" placeholder="ID книги">
-                        <input type="date" id="lostDate">
-                        <button onclick="reportLostBook()">Сообщить об утере</button>
-                        <div id="lostStatus"></div>
+                        <input type="number" id="selectedLostBookId" placeholder="ID книги">
+                        <input type="date" id="selectedLostDate">
+                        <button onclick="reportLostBookForSelectedUser()">Сообщить об утере</button>
+                        <div id="selectedLostStatus"></div>
                     </div>
                 </div>
             </div>
+        </div>
 
             <div class="section">
                 <h2>Поиск книг</h2>

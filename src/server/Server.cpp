@@ -91,11 +91,40 @@ restinio::request_handling_status_t Server::handleExternalTopUp(const restinio::
     }
 }
 
-restinio::request_handling_status_t Server::handleIssueBook(const restinio::request_handle_t& req) {
+restinio::request_handling_status_t Server::handleUsersList(const restinio::request_handle_t& req) {
+    try {
+        auto users = db_.getAllUsers();
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(users.dump())
+            .done();
+    }
+    catch(...) {
+        return req->create_response(restinio::status_internal_server_error()).done();
+    }
+}
+
+restinio::request_handling_status_t Server::handleCurrentBooks(const restinio::request_handle_t& req) {
+    try {
+        auto params = restinio::parse_query(req->header().query());
+        int user_id = std::stoi(std::string{params["user_id"]});
+        
+        auto books = db_.getCurrentBooks(user_id);
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .set_body(books.dump())
+            .done();
+    }
+    catch(...) {
+        return req->create_response(restinio::status_bad_request()).done();
+    }
+}
+
+restinio::request_handling_status_t Server::handleUserIssueBook(const restinio::request_handle_t& req) {
     try {
         auto body = nlohmann::json::parse(req->body());
-        auto result = db_.bookIssue(
-            body["user_name"].get<std::string>(),
+        auto result = db_.bookIssueByUserId(
+            body["user_id"].get<int>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );
@@ -112,13 +141,13 @@ restinio::request_handling_status_t Server::handleIssueBook(const restinio::requ
     }
 }
 
-restinio::request_handling_status_t Server::handleExtendBook(const restinio::request_handle_t& req) {
+restinio::request_handling_status_t Server::handleUserExtendBook(const restinio::request_handle_t& req) {
     try {
         auto body = nlohmann::json::parse(req->body());
-        auto result = db_.bookExtension(
-            body["user_name"].get<std::string>(),
+        auto result = db_.bookExtensionByUserId(
+            body["user_id"].get<int>(),
             body["book_id"].get<int>(),
-            body["extensionTime"].get<int>()
+            body["extension_days"].get<int>()
         );
         
         return req->create_response()
@@ -133,11 +162,11 @@ restinio::request_handling_status_t Server::handleExtendBook(const restinio::req
     }
 }
 
-restinio::request_handling_status_t Server::handleReturnBook(const restinio::request_handle_t& req) {
+restinio::request_handling_status_t Server::handleUserReturnBook(const restinio::request_handle_t& req) {
     try {
         auto body = nlohmann::json::parse(req->body());
-        auto result = db_.bookReturn(
-            body["user_name"].get<std::string>(),
+        auto result = db_.bookReturnByUserId(
+            body["user_id"].get<int>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );
@@ -154,11 +183,11 @@ restinio::request_handling_status_t Server::handleReturnBook(const restinio::req
     }
 }
 
-restinio::request_handling_status_t Server::handleLostBook(const restinio::request_handle_t& req) {
+restinio::request_handling_status_t Server::handleUserLostBook(const restinio::request_handle_t& req) {
     try {
         auto body = nlohmann::json::parse(req->body());
-        auto result = db_.bookLost(
-            body["user_name"].get<std::string>(),
+        auto result = db_.bookLostByUserId(
+            body["user_id"].get<int>(),
             body["book_id"].get<int>(),
             body["date"].get<std::string>()
         );
@@ -350,6 +379,27 @@ restinio::request_handling_status_t Server::handleDeactivateUsers(const restinio
     }
 }
 
+restinio::request_handling_status_t Server::handleGetUserId(const restinio::request_handle_t& req) {
+    try {
+        auto params = restinio::parse_query(req->header().query());
+        std::string name{params["name"]};
+        
+        auto result = db_.getUserIdByName(name);
+        return req->create_response()
+            .append_header(restinio::http_field::content_type, "application/json")
+            .append_header("Access-Control-Allow-Origin", "*")
+            .set_body(result.dump())
+            .done();
+    }
+    catch(...) {
+        return req->create_response(restinio::status_bad_request())
+            .append_header("Access-Control-Allow-Origin", "*")
+            .done();
+    }
+}
+
+
+
 restinio::request_handling_status_t Server::handler(restinio::request_handle_t req) {
     const auto target = req->header().request_target();
     
@@ -378,6 +428,15 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         else if(target.starts_with("/reports/financial")) {
             return handleFinancialReport(req);
         }
+        else if(target == "/users-list") {
+            return handleUsersList(req);
+        }
+        else if(target.starts_with("/current-books")) {
+            return handleCurrentBooks(req);
+        }
+        else if(target.starts_with("/user-id")) {
+            return handleGetUserId(req);
+        }
     }
     else if(req->header().method() == restinio::http_method_post()) {
         if (target == "/users"){
@@ -386,17 +445,17 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         else if (target == "/fond_top_up"){
             return handleExternalTopUp(req);
         }
-        else if(target == "/issue-book") {
-            return handleIssueBook(req);
+        else if(target == "/user-operations/issue-book") {
+            return handleUserIssueBook(req);
         }
-        else if(target == "/extend-book") {
-            return handleExtendBook(req);
+        else if(target == "/user-operations/extend-book") {
+            return handleUserExtendBook(req);
         }
-        else if(target == "/return-book") {
-            return handleReturnBook(req);
+        else if(target == "/user-operations/return-book") {
+            return handleUserReturnBook(req);
         }
-        else if(target == "/lost-book") {
-            return handleLostBook(req);
+        else if(target == "/user-operations/lost-book") {
+            return handleUserLostBook(req);
         }
         else if(target == "/search") {
             return handleSearch(req);
@@ -409,6 +468,9 @@ restinio::request_handling_status_t Server::handler(restinio::request_handle_t r
         }
         else if(target == "/deactivate-users") {
             return handleDeactivateUsers(req);
+        }
+        else if(target.starts_with("/user-id")) {
+            return handleGetUserId(req);
         }
     }
     

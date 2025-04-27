@@ -96,116 +96,169 @@ async function topUpFund() {
 }
 
 
-async function issueBook() {
-    const userName = document.getElementById('issueUserName').value;
-    const bookId = document.getElementById('issueBookId').value;
-    const date = document.getElementById('issueDate').value;
+let selectedUserId = null;
 
-    if(!userName || !bookId || !date) {
-        alert('Заполните все поля');
+async function findUser() {
+    const userName = document.getElementById('userNameInput').value.trim();
+    if(!userName) {
+        alert('Введите имя пользователя');
         return;
     }
 
     try {
-        const response = await fetch('http://localhost:8080/issue-book', {
+        const response = await fetch(`/user-id?name=${encodeURIComponent(userName)}`);
+        const result = await response.json();
+        
+        if(response.ok && result.status === "success") {
+            selectedUserId = result.user_id;
+            document.getElementById('userSearchStatus').textContent = `Найден пользователь ID: ${selectedUserId}`;
+            await loadCurrentBooks(selectedUserId);
+        } else {
+            document.getElementById('userSearchStatus').textContent = result.message || 'Пользователь не найден';
+            selectedUserId = null;
+        }
+    } catch(error) {
+        console.error('Ошибка поиска пользователя:', error);
+        document.getElementById('userSearchStatus').textContent = 'Ошибка при поиске пользователя';
+        selectedUserId = null;
+    }
+}
+
+// document.getElementById('userSelector').addEventListener('change', async function(e) {
+//     selectedUserId = e.target.value;
+//     if(selectedUserId) {
+//         await loadCurrentBooks(selectedUserId);
+//     }
+// });
+
+async function loadCurrentBooks(userId) {
+    try {
+        const response = await fetch(`/current-books?user_id=${userId}`);
+        const books = await response.json();
+        
+        const tbody = document.getElementById('currentBooksBody');
+        tbody.innerHTML = '';
+        
+        books.forEach(book => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${book.id}</td>
+                <td>${book.title}</td>
+                <td>${book.issue_date}</td>
+                <td>${book.duration}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch(error) {
+        console.error('Ошибка загрузки книг:', error);
+    }
+}
+
+async function issueBookToSelectedUser() {
+    if(!selectedUserId) {
+        alert('Выберите пользователя');
+        return;
+    }
+    
+    const bookId = document.getElementById('selectedBookId').value;
+    const date = document.getElementById('selectedIssueDate').value;
+
+    try {
+        const response = await fetch('/user-operations/issue-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_name: userName,
+                user_id: Number(selectedUserId),
                 book_id: Number(bookId),
                 date: date
             })
         });
         
-        handleResponse(response, 'issueStatus');
+        handleResponse(response, 'selectedIssueStatus');
+        if(response.ok) await loadCurrentBooks(selectedUserId);
     } catch(error) {
-        showError('issueStatus', error);
+        showError('selectedIssueStatus', error);
     }
 }
 
-async function extendBook() {
-    const userName = document.getElementById('extendUserName').value;
-    const bookId = document.getElementById('extendBookId').value;
-    const extensionDays = document.getElementById('extensionDays').value;
-
-    if(!userName || !bookId || !extensionDays) {
-        alert('Заполните все обязательные поля');
+async function extendBookForSelectedUser() {
+    if(!selectedUserId) {
+        alert('Выберите пользователя');
         return;
     }
-
-    if(extensionDays <= 0) {
-        alert('Количество дней продления должно быть положительным числом');
-        return;
-    }
+    
+    const bookId = document.getElementById('selectedExtendBookId').value;
+    const days = document.getElementById('selectedExtensionDays').value;
 
     try {
-        const response = await fetch('http://localhost:8080/extend-book', {
+        const response = await fetch('/user-operations/extend-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_name: userName,
+                user_id: Number(selectedUserId),
                 book_id: Number(bookId),
-                extensionTime: Number(extensionDays)
+                extension_days: Number(days)
             })
         });
         
-        handleResponse(response, 'extendStatus');
+        handleResponse(response, 'selectedExtendStatus');
+        if(response.ok) await loadCurrentBooks(selectedUserId);
     } catch(error) {
-        showError('extendStatus', error);
+        showError('selectedExtendStatus', error);
     }
 }
 
-async function returnBook() {
-    const userName = document.getElementById('returnUserName').value;
-    const bookId = document.getElementById('returnBookId').value;
-    const date = document.getElementById('returnDate').value;
-
-    if(!userName || !bookId || !date) {
-        alert('Заполните все поля');
+async function returnBookForSelectedUser() {
+    if(!selectedUserId) {
+        alert('Выберите пользователя');
         return;
     }
+    
+    const bookId = document.getElementById('selectedReturnBookId').value;
+    const date = document.getElementById('selectedReturnDate').value;
 
     try {
-        const response = await fetch('http://localhost:8080/return-book', {
+        const response = await fetch('/user-operations/return-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_name: userName,
+                user_id: Number(selectedUserId),
                 book_id: Number(bookId),
                 date: date
             })
         });
         
-        handleResponse(response, 'returnStatus');
+        handleResponse(response, 'selectedReturnStatus');
+        if(response.ok) await loadCurrentBooks(selectedUserId);
     } catch(error) {
-        showError('returnStatus', error);
+        showError('selectedReturnStatus', error);
     }
 }
 
-async function reportLostBook() {
-    const userName = document.getElementById('lostUserName').value;
-    const bookId = document.getElementById('lostBookId').value;
-    const date = document.getElementById('lostDate').value;
-
-    if(!userName || !bookId || !date) {
-        alert('Заполните все поля');
+async function reportLostBookForSelectedUser() {
+    if(!selectedUserId) {
+        alert('Выберите пользователя');
         return;
     }
+    
+    const bookId = document.getElementById('selectedLostBookId').value;
+    const date = document.getElementById('selectedLostDate').value;
 
     try {
-        const response = await fetch('http://localhost:8080/lost-book', {
+        const response = await fetch('/user-operations/lost-book', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_name: userName,
+                user_id: Number(selectedUserId),
                 book_id: Number(bookId),
                 date: date
             })
         });
         
-        handleResponse(response, 'lostStatus');
+        handleResponse(response, 'selectedLostStatus');
+        if(response.ok) await loadCurrentBooks(selectedUserId);
     } catch(error) {
-        showError('lostStatus', error);
+        showError('selectedLostStatus', error);
     }
 }
 

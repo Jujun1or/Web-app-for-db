@@ -186,18 +186,88 @@ nlohmann::json Database::externalTopUpFund(int summ, const std::string& date) {
     return result;
 }
 
-nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, const std::string& date) {
+nlohmann::json Database::getAllUsers() {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        pqxx::result res = txn.exec("SELECT user_id, name FROM Users WHERE is_active = true");
+        for (const auto& row : res) {
+            nlohmann::json user;
+            user["id"] = row["user_id"].as<int>();
+            user["name"] = row["name"].as<std::string>();
+            result.push_back(user);
+        }
+        txn.commit();
+    }
+    catch(...) {
+        txn.abort();
+        throw;
+    }
+    return result;
+}
+
+nlohmann::json Database::getCurrentBooks(int user_id) {
+    nlohmann::json result = nlohmann::json::array();
+    pqxx::work txn(conn_);
+    
+    try {
+        pqxx::result res = txn.exec_params(
+            "SELECT bu.bu_id, b.title, bu.issue_date, bu.duration "
+            "FROM BookUser bu "
+            "JOIN Books b ON bu.book_id = b.book_id "
+            "WHERE bu.user_id = $1 AND bu.return_date IS NULL",
+            user_id
+        );
+        
+        for (const auto& row : res) {
+            nlohmann::json book;
+            book["id"] = row["bu_id"].as<int>();
+            book["title"] = row["title"].as<std::string>();
+            book["issue_date"] = row["issue_date"].as<std::string>();
+            book["duration"] = row["duration"].as<int>();
+            result.push_back(book);
+        }
+        txn.commit();
+    }
+    catch(...) {
+        txn.abort();
+        throw;
+    }
+    return result;
+}
+
+nlohmann::json Database::getUserIdByName(const std::string& name) {
     nlohmann::json result;
     pqxx::work txn(conn_);
     
     try {
-        // 1. Получаем user_id по имени
-        pqxx::row user_row = txn.exec_params1(
-            "SELECT user_id FROM Users WHERE name = $1", 
-            user_name);
-        int user_id = user_row["user_id"].as<int>();
+        pqxx::row row = txn.exec_params1(
+            "SELECT user_id FROM Users WHERE name = $1 AND is_active = true",
+            name);
+            
+        result["user_id"] = row["user_id"].as<int>();
+        result["status"] = "success";
+        txn.commit();
+    }
+    catch(const pqxx::unexpected_rows&) {
+        result["status"] = "error";
+        result["message"] = "Пользователь не найден";
+    }
+    catch(const std::exception& e) {
+        txn.abort();
+        result["status"] = "error";
+        result["message"] = std::string("Ошибка базы данных: ") + e.what();
+    }
+    return result;
+}
 
-        // 2. Проверка активных книг пользователя
+nlohmann::json Database::bookIssueByUserId(int user_id, int book_id, const std::string& date) {
+    nlohmann::json result;
+    pqxx::work txn(conn_);
+    
+    try {
+        // Проверка количества активных книг
         pqxx::result active_books = txn.exec_params(
             "SELECT COUNT(*) FROM BookUser "
             "WHERE user_id = $1 AND return_date IS NULL", 
@@ -210,7 +280,7 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
             return result;
         }
 
-        // 3. Проверка просрочек по активным книгам
+        // Проверка просроченных книг
         pqxx::result overdue_check = txn.exec_params(
             "SELECT issue_date, duration FROM BookUser "
             "WHERE user_id = $1 AND return_date IS NULL",
@@ -231,7 +301,7 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
             }
         }
 
-        // 4. Проверка наличия книги
+        // Проверка доступности книги
         pqxx::result book_available = txn.exec_params(
             "SELECT curr_amount FROM Books WHERE book_id = $1", 
             book_id);
@@ -243,7 +313,7 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
             return result;
         }
 
-        // 5. Выдача книги с NULL в return_date
+        // Выдача книги
         txn.exec_params(
             "INSERT INTO BookUser "
             "(book_id, user_id, issue_date, duration, return_date, extension_count) "
@@ -253,7 +323,7 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
             date, 
             30);
 
-        // 6. Обновление количества книг
+        // Обновление количества книг
         txn.exec_params(
             "UPDATE Books SET curr_amount = curr_amount - 1 "
             "WHERE book_id = $1", 
@@ -263,11 +333,6 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
         result["status"] = "success";
         result["message"] = "Книга успешно выдана";
     }
-    catch (const pqxx::unexpected_rows&) {
-        txn.abort();
-        result["status"] = "error";
-        result["message"] = "Пользователь не найден";
-    }
     catch (const std::exception& e) {
         txn.abort();
         result["status"] = "error";
@@ -276,18 +341,12 @@ nlohmann::json Database::bookIssue(const std::string& user_name, int book_id, co
     return result;
 }
 
-nlohmann::json Database::bookExtension(const std::string& user_name, int book_id, int extensionTime) {
+nlohmann::json Database::bookExtensionByUserId(int user_id, int book_id, int extension_days) {
     nlohmann::json result;
     pqxx::work txn(conn_);
     
     try {
-        // 1. Получаем user_id по имени
-        pqxx::row user_row = txn.exec_params1(
-            "SELECT user_id FROM Users WHERE name = $1", 
-            user_name);
-        int user_id = user_row["user_id"].as<int>();
-
-        // 2. Получение информации о выдаче
+        // Получение информации о выдаче
         pqxx::row ext_info = txn.exec_params1(
             "SELECT bu_id, issue_date, duration, extension_count "
             "FROM BookUser "
@@ -295,6 +354,7 @@ nlohmann::json Database::bookExtension(const std::string& user_name, int book_id
             "LIMIT 1",
             user_id, book_id);
 
+        // Проверка лимита продлений
         int extension_count = ext_info["extension_count"].as<int>();
         if (extension_count >= 3) {
             result["status"] = "error";
@@ -303,10 +363,8 @@ nlohmann::json Database::bookExtension(const std::string& user_name, int book_id
             return result;
         }
 
-        // 3. Обновление duration
-        int new_duration = ext_info["duration"].as<int>() + extensionTime;
-        
-        // 4. Обновление записи
+        // Обновление срока
+        int new_duration = ext_info["duration"].as<int>() + extension_days;
         txn.exec_params(
             "UPDATE BookUser SET "
             "duration = $1, extension_count = extension_count + 1 "
@@ -314,7 +372,7 @@ nlohmann::json Database::bookExtension(const std::string& user_name, int book_id
             new_duration,
             ext_info["bu_id"].as<int>());
 
-        // 5. Расчет новой даты возврата для ответа
+        // Расчет новой даты возврата
         std::string new_due_date = dateSumm(
             ext_info["issue_date"].as<std::string>(),
             new_duration);
@@ -323,12 +381,10 @@ nlohmann::json Database::bookExtension(const std::string& user_name, int book_id
         result["status"] = "success";
         result["new_due_date"] = new_due_date;
     }
-    catch (const pqxx::unexpected_rows& e) {
+    catch (const pqxx::unexpected_rows&) {
         txn.abort();
         result["status"] = "error";
-        result["message"] = strcmp(e.what(), "Unexpected number of rows") == 0 
-                          ? "Активная запись о книге не найдена" 
-                          : "Пользователь не найден";
+        result["message"] = "Активная запись о книге не найдена";
     }
     catch (const std::exception& e) {
         txn.abort();
@@ -338,18 +394,12 @@ nlohmann::json Database::bookExtension(const std::string& user_name, int book_id
     return result;
 }
 
-nlohmann::json Database::bookReturn(const std::string& user_name, int book_id, const std::string& date) {
+nlohmann::json Database::bookReturnByUserId(int user_id, int book_id, const std::string& date) {
     nlohmann::json result;
     pqxx::work txn(conn_);
     
     try {
-        // 1. Получаем user_id по имени
-        pqxx::row user_row = txn.exec_params1(
-            "SELECT user_id FROM Users WHERE name = $1", 
-            user_name);
-        int user_id = user_row["user_id"].as<int>();
-
-        // 2. Поиск активной записи
+        // Поиск активной записи
         pqxx::result active_records = txn.exec_params(
             "SELECT bu_id FROM BookUser "
             "WHERE user_id = $1 AND book_id = $2 AND return_date IS NULL",
@@ -362,14 +412,14 @@ nlohmann::json Database::bookReturn(const std::string& user_name, int book_id, c
             return result;
         }
 
-        // 3. Обновление записи о возврате
+        // Обновление записи
         txn.exec_params(
             "UPDATE BookUser SET return_date = $1 "
             "WHERE bu_id = $2",
             date, 
             active_records[0]["bu_id"].as<int>());
 
-        // 4. Возврат книги в фонд
+        // Возврат книги в фонд
         txn.exec_params(
             "UPDATE Books SET curr_amount = curr_amount + 1 "
             "WHERE book_id = $1", 
@@ -379,11 +429,6 @@ nlohmann::json Database::bookReturn(const std::string& user_name, int book_id, c
         result["status"] = "success";
         result["message"] = "Книга успешно возвращена";
     }
-    catch (const pqxx::unexpected_rows&) {
-        txn.abort();
-        result["status"] = "error";
-        result["message"] = "Пользователь не найден";
-    }
     catch (const std::exception& e) {
         txn.abort();
         result["status"] = "error";
@@ -392,32 +437,24 @@ nlohmann::json Database::bookReturn(const std::string& user_name, int book_id, c
     return result;
 }
 
-nlohmann::json Database::bookLost(const std::string& user_name, int book_id, const std::string& date) {
+nlohmann::json Database::bookLostByUserId(int user_id, int book_id, const std::string& date) {
     nlohmann::json result;
     pqxx::work txn(conn_);
     
     try {
-        // 1. Получаем user_id по имени
-        pqxx::row user_row = txn.exec_params1(
-            "SELECT user_id FROM Users WHERE name = $1", 
-            user_name);
-        int user_id = user_row["user_id"].as<int>();
-
-        // 2. Получение информации о выдаче
+        // Получение информации о выдаче
         pqxx::row issue_info = txn.exec_params1(
             "SELECT bu_id, issue_date, duration FROM BookUser "
             "WHERE user_id = $1 AND book_id = $2 AND return_date IS NULL "
             "LIMIT 1",
             user_id, book_id);
 
-        // 3. Расчет даты возврата и просрочки
+        // Проверка просрочки
         std::string due_date = dateSumm(
             issue_info["issue_date"].as<std::string>(),
             issue_info["duration"].as<int>());
         
         int days_overdue = daysBetweenDates(due_date, date);
-
-        // 4. Проверка максимальной просрочки
         if (days_overdue > 365) {
             result["status"] = "error";
             result["message"] = "Нельзя возместить утерю при просрочке >1 года";
@@ -425,7 +462,7 @@ nlohmann::json Database::bookLost(const std::string& user_name, int book_id, con
             return result;
         }
 
-        // 5. Получение информации о книге
+        // Получение информации о книге
         pqxx::row book_info = txn.exec_params1(
             "SELECT price, total_amount FROM Books WHERE book_id = $1",
             book_id);
@@ -433,14 +470,13 @@ nlohmann::json Database::bookLost(const std::string& user_name, int book_id, con
         int price = book_info["price"].as<int>();
         int total_amount = book_info["total_amount"].as<int>();
 
-        // 6. Обновление общего количества книг
+        // Обновление данных
         txn.exec_params(
             "UPDATE Books SET total_amount = $1 "
             "WHERE book_id = $2",
             total_amount - 1,
             book_id);
 
-        // 7. Запись возмещения в Fond
         txn.exec_params(
             "INSERT INTO Fond (operation_type, book_id, summ, date) "
             "VALUES ($1, $2, $3, $4)",
@@ -449,7 +485,6 @@ nlohmann::json Database::bookLost(const std::string& user_name, int book_id, con
             price,
             date);
 
-        // 8. Пометить как возвращенную
         txn.exec_params(
             "UPDATE BookUser SET return_date = $1 "
             "WHERE bu_id = $2",
@@ -460,12 +495,10 @@ nlohmann::json Database::bookLost(const std::string& user_name, int book_id, con
         result["status"] = "success";
         result["message"] = "Утеря оформлена. Стоимость возмещена: " + std::to_string(price) + " руб.";
     }
-    catch (const pqxx::unexpected_rows& e) {
+    catch (const pqxx::unexpected_rows&) {
         txn.abort();
         result["status"] = "error";
-        result["message"] = strcmp(e.what(), "Unexpected number of rows") == 0 
-                          ? "Книга не найдена у пользователя" 
-                          : "Пользователь не найден";
+        result["message"] = "Книга не найдена у пользователя";
     }
     catch (const std::exception& e) {
         txn.abort();
