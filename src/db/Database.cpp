@@ -4,10 +4,10 @@
 #include <sstream>
 #include <iomanip>
 
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#include <stdexcept>
+#include <random>
+#include <string>
+#include <vector>
+#include <iostream>
 
 std::chrono::year_month_day parseDate(const std::string& dateStr) {
     std::istringstream iss(dateStr);
@@ -914,4 +914,479 @@ nlohmann::json Database::deactivateInactiveUsers() {
     }
     
     return result;
+}
+
+using namespace std;
+using namespace std::chrono;
+
+void Database::createTempTable() {
+    pqxx::work txn(conn_);
+    txn.exec(R"(
+        CREATE TEMP TABLE IF NOT EXISTS benchmark_books (
+            book_id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            price INT NOT NULL,
+            curr_amount INT NOT NULL,
+            total_amount INT NOT NULL
+        )
+    )");
+    txn.commit();
+}
+
+void Database::prepareTestData(int num_records) {
+    pqxx::work txn(conn_);
+    txn.exec("TRUNCATE benchmark_books");
+    
+    // Генерация строго последовательных ID без пропусков
+    for(int i = 1; i <= num_records; ++i) {
+        std::string title = "Book_" + std::to_string(i) + "_" + std::to_string(rand());
+        txn.exec_params(
+            "INSERT INTO benchmark_books (title, price, curr_amount, total_amount) "
+            "VALUES ($1, $2, $3, $4)",
+            title, 100, 1, 1);
+    }
+    txn.commit();
+}
+
+void Database::cleanTestData() {
+    pqxx::work txn(conn_);
+    txn.exec("DROP TABLE IF EXISTS benchmark_books");
+    txn.commit();
+}
+
+void Database::disableIndexes() {
+    pqxx::work txn(conn_);
+    txn.exec("ALTER TABLE benchmark_books DROP CONSTRAINT benchmark_books_pkey");
+    txn.exec("DROP INDEX IF EXISTS benchmark_books_title_idx");
+    txn.commit();
+}
+
+void Database::enableIndexes() {
+    pqxx::work txn(conn_);
+    txn.exec("ALTER TABLE benchmark_books ADD PRIMARY KEY (book_id)");
+    txn.exec("CREATE INDEX benchmark_books_title_idx ON benchmark_books(title)");
+    txn.commit();
+}
+
+// 1. Поиск по ключевому полю (единичный)
+double Database::benchmarkKeySearch(int num_records) {
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    auto start = high_resolution_clock::now();
+    
+    // Выполняем один поиск по случайному ID
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(1, num_records);
+    int random_id = distrib(gen);
+    
+    txn.exec_params1("SELECT * FROM benchmark_books WHERE book_id = $1", random_id);
+    
+    auto end = high_resolution_clock::now();
+    txn.abort();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 2. Поиск по неключевому полю (гарантированно 1 результат)
+double Database::benchmarkNonKeySearch(int num_records) {
+    if(num_records < 1) return 0.0;
+    
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    
+    // Получаем случайное существующее название через OFFSET
+    pqxx::row title_row;
+    try {
+        title_row = txn.exec_params1(
+            "SELECT title FROM benchmark_books ORDER BY book_id OFFSET floor(random() * $1) LIMIT 1",
+            num_records);
+    } catch(const pqxx::unexpected_rows&) {
+        // Если не получили строку, берем первую
+        title_row = txn.exec_params1(
+            "SELECT title FROM benchmark_books ORDER BY book_id LIMIT 1");
+    }
+    
+    std::string random_title = title_row["title"].as<std::string>();
+    
+    auto start = high_resolution_clock::now();
+    auto result = txn.exec_params("SELECT * FROM benchmark_books WHERE title = $1", random_title);
+    if(result.empty()) {
+        txn.abort();
+        cleanTestData();
+        return 0.0; // или throw std::runtime_error
+    }
+    auto end = high_resolution_clock::now();
+    
+    txn.abort();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 3. Поиск по маске (LIMIT 1 для гарантии одного результата)
+double Database::benchmarkMaskSearch(int num_records) {
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    auto start = high_resolution_clock::now();
+    
+    // Добавляем LIMIT 1 чтобы гарантировать один результат
+    txn.exec("SELECT * FROM benchmark_books WHERE title LIKE 'Book_%' LIMIT 1");
+    
+    auto end = high_resolution_clock::now();
+    txn.abort();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 4. Добавление записи (единичное)
+double Database::benchmarkSingleInsert(int num_records) {
+    createTempTable();
+    prepareTestData(num_records); // Подготовка таблицы, но не очистка
+    
+    pqxx::work txn(conn_);
+    auto start = high_resolution_clock::now();
+    
+    txn.exec_params(
+        "INSERT INTO benchmark_books (title, price, curr_amount, total_amount) "
+        "VALUES ($1, $2, $3, $4)",
+        "NewBook_" + std::to_string(num_records + 1), 100, 1, 1);
+    
+    auto end = high_resolution_clock::now();
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 5. Добавление группы записей (1000 записей за раз)
+double Database::benchmarkBulkInsert(int num_records) {
+    createTempTable();
+    
+    pqxx::work txn(conn_);
+    
+    // Создаем SQL-запрос для множественной вставки
+    std::string query = "INSERT INTO benchmark_books (title, price, curr_amount, total_amount) VALUES ";
+    const int batch_size = 1000; // Количество записей для вставки
+    
+    for(int i = 1; i <= batch_size; ++i) {
+        if(i > 1) query += ",";
+        query += "('BulkBook_" + std::to_string(i) + "', 100, 1, 1)";
+    }
+    
+    auto start = high_resolution_clock::now();
+    txn.exec(query);
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 6. Изменение записи по ключу (единичное)
+double Database::benchmarkKeyUpdate(int num_records) {
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    int random_id = 1 + (rand() % num_records);
+    
+    auto start = high_resolution_clock::now();
+    auto result = txn.exec_params(
+        "UPDATE benchmark_books SET price = price + 1 WHERE book_id = $1", 
+        random_id);
+    if (result.affected_rows() != 1) {
+        txn.abort();
+        cleanTestData();
+        throw std::runtime_error("Key update failed - no rows affected");
+    }
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 7. Изменение по неключевому полю (гарантированно 1 запись)
+double Database::benchmarkNonKeyUpdate(int num_records) {
+    if(num_records < 1) return 0.0;
+    
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    
+    // Получаем случайное существующее название
+    pqxx::row title_row;
+    try {
+        title_row = txn.exec_params1(
+            "SELECT title FROM benchmark_books ORDER BY book_id OFFSET floor(random() * $1) LIMIT 1",
+            num_records);
+    } catch(const pqxx::unexpected_rows&) {
+        title_row = txn.exec_params1("SELECT title FROM benchmark_books ORDER BY book_id LIMIT 1");
+    }
+    
+    std::string random_title = title_row["title"].as<std::string>();
+    
+    auto start = high_resolution_clock::now();
+    auto result = txn.exec_params(
+        "UPDATE benchmark_books SET price = price + 1 WHERE title = $1", 
+        random_title);
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 8. Удаление записи по ключу (единичное)
+double Database::benchmarkKeyDelete(int num_records) {
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(1, num_records);
+    int random_id = distrib(gen);
+    
+    auto start = high_resolution_clock::now();
+    txn.exec_params("DELETE FROM benchmark_books WHERE book_id = $1", random_id);
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 9. Удаление по неключевому полю (гарантированно 1 запись)
+double Database::benchmarkNonKeyDelete(int num_records) {
+    if(num_records < 1) return 0.0;
+    
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    
+    // Получаем случайное существующее название
+    pqxx::row title_row;
+    try {
+        title_row = txn.exec_params1(
+            "SELECT title FROM benchmark_books ORDER BY book_id OFFSET floor(random() * $1) LIMIT 1",
+            num_records);
+    } catch(const pqxx::unexpected_rows&) {
+        title_row = txn.exec_params1("SELECT title FROM benchmark_books ORDER BY book_id LIMIT 1");
+    }
+    
+    std::string random_title = title_row["title"].as<std::string>();
+    
+    auto start = high_resolution_clock::now();
+    txn.exec_params("DELETE FROM benchmark_books WHERE title = $1", random_title);
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 10. Удаление группы записей (все четные ID)
+double Database::benchmarkBulkDelete(int num_records) {
+    createTempTable();
+    prepareTestData(num_records);
+    
+    pqxx::work txn(conn_);
+    auto start = high_resolution_clock::now();
+    txn.exec("DELETE FROM benchmark_books WHERE book_id % 2 = 0");
+    auto end = high_resolution_clock::now();
+    
+    txn.commit();
+    cleanTestData();
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 11. Сжатие после удаления 200 записей
+double Database::benchmarkVacuumAfterDelete200(int num_records) {
+    // Создаем временную таблицу с явным указанием структуры
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec(R"(
+            CREATE TEMP TABLE IF NOT EXISTS benchmark_books (
+                book_id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                curr_amount INTEGER NOT NULL,
+                total_amount INTEGER NOT NULL
+            )
+        )");
+        nt.exec("TRUNCATE benchmark_books");
+        
+        // Генерация тестовых данных с явным указанием столбцов
+        for(int i = 1; i <= num_records; ++i) {
+            nt.exec_params(
+                "INSERT INTO benchmark_books (title, price, curr_amount, total_amount) "
+                "VALUES ($1, $2, $3, $4)",
+                "Book_" + std::to_string(i), 100, 1, 1);
+        }
+    }
+
+    // Удаление 200 записей
+    {
+        pqxx::work txn(conn_);
+        txn.exec("DELETE FROM benchmark_books WHERE book_id <= 200");
+        txn.commit();
+    }
+
+    // Замер VACUUM
+    auto start = high_resolution_clock::now();
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec("VACUUM (VERBOSE, ANALYZE) benchmark_books");
+    }
+    auto end = high_resolution_clock::now();
+
+    // Очистка
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec("DROP TABLE IF EXISTS benchmark_books");
+    }
+
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+// 12. Сжатие после удаления (оставить 200 записей)
+double Database::benchmarkVacuumLeave200(int num_records) {
+    // Создаем временную таблицу
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec(R"(
+            CREATE TEMP TABLE IF NOT EXISTS benchmark_books (
+                book_id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                curr_amount INTEGER NOT NULL,
+                total_amount INTEGER NOT NULL
+            )
+        )");
+        nt.exec("TRUNCATE benchmark_books");
+        
+        // Заполнение данными
+        for(int i = 1; i <= num_records; ++i) {
+            nt.exec_params(
+                "INSERT INTO benchmark_books (title, price, curr_amount, total_amount) "
+                "VALUES ($1, $2, $3, $4)",
+                "Book_" + std::to_string(i), 100, 1, 1);
+        }
+    }
+
+    // Удаление лишних записей
+    {
+        pqxx::work txn(conn_);
+        txn.exec("DELETE FROM benchmark_books WHERE book_id > 200");
+        txn.commit();
+    }
+
+    // Замер VACUUM
+    auto start = high_resolution_clock::now();
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec("VACUUM (VERBOSE, ANALYZE) benchmark_books");
+    }
+    auto end = high_resolution_clock::now();
+
+    // Очистка
+    {
+        pqxx::nontransaction nt(conn_);
+        nt.exec("DROP TABLE IF EXISTS benchmark_books");
+    }
+
+    return duration_cast<duration<double>>(end - start).count();
+}
+
+void Database::benchmarkOperations(const std::vector<int>& record_counts) {
+    cout << "\nBenchmark Results (seconds):\n";
+    cout << "Operation\t\t1000\t\t10000\t\t100000\n";
+    
+
+    cout << "\nVacuum After Delete 200\t";
+    for(int count : record_counts) cout << benchmarkVacuumAfterDelete200(count) << "\t";
+    cout << "\n";
+    
+    cout << "Vacuum Leave 200\t";
+    for(int count : record_counts) cout << benchmarkVacuumLeave200(count) << "\t";
+    cout << "\n";
+
+    // Key Search
+    cout << "Key Search\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkKeySearch(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Non-key Search
+    cout << "Non-key Search\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkNonKeySearch(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Mask Search
+    cout << "Mask Search\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkMaskSearch(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Single Insert
+    cout << "Single Insert\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkSingleInsert(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Bulk Insert
+    cout << "Bulk Insert\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkBulkInsert(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Key Update
+    cout << "Key Update\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkKeyUpdate(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Non-key Update
+    cout << "Non-key Update\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkNonKeyUpdate(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Key Delete
+    cout << "Key Delete\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkKeyDelete(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Non-key Delete
+    cout << "Non-key Delete\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkNonKeyDelete(count) << "\t";
+    }
+    cout << "\n";
+    
+    // Bulk Delete
+    cout << "Bulk Delete\t\t";
+    for(int count : record_counts) {
+        cout << benchmarkBulkDelete(count) << "\t";
+    }
+    cout << "\n";
+    
 }

@@ -2,6 +2,7 @@
 #include <pqxx/pqxx>
 #include <nlohmann/json.hpp>
 
+
 class Database {
 public:
     Database(const std::string& conn_str);
@@ -26,6 +27,28 @@ public:
     nlohmann::json getAllUsers();
     nlohmann::json getCurrentBooks(int user_id);
     nlohmann::json getUserIdByName(const std::string& name);
+
+    void prepareTestData(int num_records);
+    void cleanTestData();
+    void createTempTable();
+    void disableIndexes();
+    void enableIndexes();
+    
+    // Benchmark methods
+    double benchmarkKeySearch(int num_records);
+    double benchmarkNonKeySearch(int num_records);
+    double benchmarkMaskSearch(int num_records);
+    double benchmarkSingleInsert(int num_records);
+    double benchmarkBulkInsert(int num_records);
+    double benchmarkKeyUpdate(int num_records);
+    double benchmarkNonKeyUpdate(int num_records);
+    double benchmarkKeyDelete(int num_records);
+    double benchmarkNonKeyDelete(int num_records);
+    double benchmarkBulkDelete(int num_records);
+    double benchmarkVacuumAfterDelete200(int num_records);
+    double benchmarkVacuumLeave200(int num_records);
+
+    void benchmarkOperations(const std::vector<int>& record_counts);
 private:
     pqxx::connection conn_;
 };

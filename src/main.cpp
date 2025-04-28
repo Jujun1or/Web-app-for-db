@@ -5,6 +5,11 @@
 int main() {
     try {
         Database db("postgresql://postgres:roman2392@localhost/library_db");
+
+        // Запуск бенчмарков
+        // std::vector<int> record_counts = {1000, 10000, 100000};
+        // db.benchmarkOperations(record_counts);
+
         Server server(db);
         server.start();
     }
